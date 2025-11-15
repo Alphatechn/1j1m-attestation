@@ -30,9 +30,9 @@
                             </div>
                         </div>
 
-                        <div class="text-center">
-                            <button type="submit" class="btn btn-primary-custom btn-lg w-100" id="searchBtn">
-                                <i class="bi bi-search me-2"></i>Vérifier l'attestation
+                        <div class="d-flex justify-content-center mt-4 px-2">
+                            <button type="submit" class="btn btn-primary-custom " id="searchBtn">
+                                <i class="bi bi-search me-2"></i>Vérifier
                             </button>
                         </div>
                     </form>

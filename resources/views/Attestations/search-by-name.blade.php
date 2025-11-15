@@ -28,9 +28,9 @@
                             </div>
                         </div>
 
-                        <div class="text-center mt-4">
-                            <button type="submit" class="btn btn-primary-custom btn-lg" id="searchBtn">
-                                <i class="bi bi-search me-2"></i>Rechercher mon attestation
+                        <div class="d-flex justify-content-center mt-4 px-2">
+                            <button type="submit" class="btn btn-primary-custom " id="searchBtn" style="max-width: 250px;">
+                                <i class="bi bi-search me-2"></i>Rechercher
                             </button>
                         </div>
                     </form>
