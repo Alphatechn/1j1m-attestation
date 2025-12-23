@@ -148,16 +148,10 @@ $(document).ready(function() {
                             <div class="col-md-8">
                                 <h5 class="fw-bold text-primary mb-2">${fullName}</h5>
                                 <div class="row">
-                                    <div class="col-sm-6">
+                                    <div class="col-sm-12">
                                         <p class="mb-1">
                                             <i class="bi bi-hash text-muted me-2"></i>
                                             <strong>N°:</strong> ${attestation.attestation_number}
-                                        </p>
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <p class="mb-1">
-                                            <i class="bi bi-calendar text-muted me-2"></i>
-                                            <strong>Période:</strong> ${attestation.periode.libelle}
                                         </p>
                                     </div>
                                 </div>

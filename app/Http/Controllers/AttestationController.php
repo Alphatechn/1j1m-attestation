@@ -26,7 +26,7 @@ class AttestationController extends Controller
             'searchByName',
             'searchByNumberPage',
             'searchByNumber',
-            'publicDownload',  
+            'publicDownload',
             'publicPreview'
         ]);
     }
@@ -146,7 +146,7 @@ class AttestationController extends Controller
                 'data' => $attestations,
                 'count' => $attestations->count(),
                 'message' => $attestations->count() > 0
-                    ? "{$attestations->count()} attestation(s) trouvée(s)"
+                    ? "Attestation trouvée"
                     : "Aucune attestation trouvée pour \"{$request->name}\""
             ]);
 

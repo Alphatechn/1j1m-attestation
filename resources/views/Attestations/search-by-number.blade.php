@@ -22,7 +22,7 @@
                             <label class="form-label fw-bold">Numéro d'Attestation <span class="text-danger">*</span></label>
                             <input type="text" class="form-control form-control-lg"
                                    name="attestation_number"
-                                   placeholder="Ex: AT-2024-00123 ou AT202400123"
+                                   placeholder="Ex: ATT-2024-00123 ou ATT202400123"
                                    required minlength="5" maxlength="50">
                             <div class="form-text">
                                 <i class="bi bi-info-circle me-1"></i>
@@ -139,11 +139,7 @@ $(document).ready(function() {
         </div>
 
         <div class="row mb-3">
-            <div class="col-sm-6">
-                <strong>Période:</strong><br>
-                ${attestation.periode.libelle}
-            </div>
-            <div class="col-sm-6">
+            <div class="col-sm-12">
                 <strong>Date d'émission:</strong><br>
                 ${new Date(attestation.issue_date).toLocaleDateString('fr-FR')}
             </div>
