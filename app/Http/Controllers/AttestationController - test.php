@@ -86,10 +86,15 @@ class AttestationController extends Controller
                 ], 422);
             }
 
+
+
+
             $attestation = $this->attestationService->createAttestation(
                 $participant,
                 auth()->id()
             );
+
+            $this->sendEmail($attestation->id);
 
             DB::commit();
 
