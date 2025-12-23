@@ -197,7 +197,7 @@
         <div class="content">
             <p>Bonjour <strong>{{ $participant->full_name }}</strong>,</p>
 
-            <p>Nous avons le plaisir de vous adresser votre attestation de participation pour la période <strong>{{ $periode->full_libelle }}</strong>.</p>
+            <p>Nous avons le plaisir de vous adresser votre attestation de participation.</p>
 
             <div class="info-box">
                 <div class="info-label">Numéro d'attestation :</div>
