@@ -94,8 +94,6 @@ class AttestationController extends Controller
                 auth()->id()
             );
 
-            $this->sendEmail($attestation->id);
-
             DB::commit();
 
             return response()->json([

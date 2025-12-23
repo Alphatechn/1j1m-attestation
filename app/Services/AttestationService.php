@@ -25,6 +25,8 @@ class AttestationService
             'content_text' => $this->generateContentText($participant),
         ]);
 
+        $this->sendAttestationByEmail($attestation);
+
         return $attestation;
     }
 
