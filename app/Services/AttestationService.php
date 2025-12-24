@@ -389,7 +389,7 @@ class AttestationService
         try {
             // Générer le PDF
             $pdfContent = $this->generatePDFOutput($attestation);
-            $fileName = 'attestation_' . $attestation->attestation_number . '.pdf';
+            $fileName = 'attestation_' . $attestation->attestation_number . '_'.$participant->full_name. '.pdf';
 
             // Envoyer l'email avec le PDF en pièce jointe
             Mail::send('emails.attestation', [
