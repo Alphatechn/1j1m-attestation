@@ -5,7 +5,6 @@
 @section('content')
 <div class="public-container">
     <div class="hero-section">
-        <div class="logo">1Jeune1Metier</div>
         <div class="logo-subtitle">Vérification par QR Code</div>
     </div>
 
@@ -25,7 +24,7 @@
 
                                 <div class="mb-3">
                                     <strong class="text-primary">Participant:</strong><br>
-                                    {{ $participant->name ? $participant->name . ' ' . $participant->firstname : $participant->full_name }}
+                                    {{ $participant->name ? $participant->name }}
                                 </div>
 
                                 <div class="mb-3">
