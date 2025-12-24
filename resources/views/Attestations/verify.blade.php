@@ -60,7 +60,7 @@
 
                         <div class="row mt-4">
                             <div class="col-12 text-center">
-                                <a href="{{ route('attestations.download', $attestation->id) }}"
+                                <a href="{{ route('public.attestations.public.download', $attestation->id) }}"
                                    class="btn btn-primary-custom me-3" target="_blank">
                                     <i class="bi bi-download me-2"></i>Télécharger l'Attestation
                                 </a>
