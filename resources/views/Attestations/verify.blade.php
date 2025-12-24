@@ -25,7 +25,7 @@
 
                                 <div class="mb-3">
                                     <strong class="text-primary">Participant:</strong><br>
-                                    {{ $participant->name ? $participant->name  }}
+                                    {{ $participant->name ? $participant->name . ' ' . $participant->firstname : $participant->full_name }}
                                 </div>
 
                                 <div class="mb-3">
