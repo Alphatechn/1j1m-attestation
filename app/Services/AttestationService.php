@@ -11,11 +11,24 @@ use Carbon\Carbon;
 
 class AttestationService
 {
+    // Compteur STATIQUE pour suivre les envois dans la même requête
+    private static $emailCountThisRequest = 0;
     /**
-     * Créer une attestation (sans générer le PDF)
+     * Créer une attestation
      */
     public function createAttestation(Participant $participant, $userId = null)
     {
+        // ⭐⭐ DÉLAI AUTOMATIQUE POUR LES ENVOIS EN MASSE ⭐⭐
+        if (self::$emailCountThisRequest > 0) {
+            // Délai progressif : 8s, 9s, 10s...
+            $delaySeconds = 8 + (self::$emailCountThisRequest * 1);
+            Log::info("⏳ Délai anti-rate limit #" . self::$emailCountThisRequest . ": " . $delaySeconds . " secondes");
+            sleep($delaySeconds);
+        }
+
+        // Incrémenter le compteur
+        self::$emailCountThisRequest++;
+
         $attestation = Attestation::create([
             'participant_id' => $participant->id,
             'periode_id' => $participant->periode_id,
@@ -25,6 +38,7 @@ class AttestationService
             'content_text' => $this->generateContentText($participant),
         ]);
 
+        // Envoi email
         $this->sendAttestationByEmail($attestation);
 
         return $attestation;
@@ -387,6 +401,15 @@ class AttestationService
         }
 
         try {
+            // ⭐⭐ DOUBLE PROTECTION : Délai supplémentaire de 3 secondes ⭐⭐
+            static $methodCallCount = 0;
+            if ($methodCallCount > 0) {
+                $extraDelay = 3;
+                Log::info("⏳ Protection supplémentaire: " . $extraDelay . " secondes");
+                sleep($extraDelay);
+            }
+            $methodCallCount++;
+
             // Générer le PDF
             $pdfContent = $this->generatePDFOutput($attestation);
             $fileName = 'attestation_' . $attestation->attestation_number . '_'.$participant->full_name. '.pdf';
@@ -411,10 +434,12 @@ class AttestationService
                 'email_status' => 'success'
             ]);
 
+            Log::info("✅ Email attestation envoyé avec succès: " . $attestation->id . " à " . $participant->email);
+
             return true;
 
         } catch (\Exception $e) {
-            Log::error('Erreur envoi email attestation: ' . $e->getMessage());
+            Log::error('❌ Erreur envoi email attestation: ' . $e->getMessage());
 
             $attestation->update([
                 'email_status' => 'failed'
