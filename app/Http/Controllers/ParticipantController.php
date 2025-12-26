@@ -69,7 +69,7 @@ class ParticipantController extends Controller
             $sortOrder = $request->get('sort_order', 'desc');
             $query->orderBy($sortBy, $sortOrder);
 
-            $participants = $query;
+            $participants = $query->get();
 
             return response()->json([
                 'success' => true,
