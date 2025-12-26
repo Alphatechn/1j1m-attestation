@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
@@ -408,7 +409,7 @@ class ParticipantController extends Controller
 public function downloadTemplate()
 {
     try {
-        \Log::info('Download template accessed'); // Test logging
+        Log::info('Download template accessed'); // Test logging
 
         $templateData = [
             ['nom', 'email', 'telephone', 'matricule', 'organisation', 'fonction'],
@@ -436,7 +437,7 @@ public function downloadTemplate()
         return Excel::download($export, $filename);
 
     } catch (\Exception $e) {
-        \Log::error('Template download error: ' . $e->getMessage());
+        Log::error('Template download error: ' . $e->getMessage());
 
         // Fallback CSV
         $filename = 'template_import_participants_' . date('Y-m-d') . '.csv';

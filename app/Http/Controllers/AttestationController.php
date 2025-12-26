@@ -262,73 +262,64 @@ class AttestationController extends Controller
      */
     public function store(Request $request)
     {
-        // ⭐⭐ VÉRIFIER SI HOSTINGER A BLOQUÉ ⭐⭐
-        $blockedUntil = Cache::get('hostinger_blocked_until', 0);
-        if ($blockedUntil > time()) {
-            $waitMinutes = ceil(($blockedUntil - time()) / 60);
-            return response()->json([
-                'success' => false,
-                'message' => "🚨 Hostinger a bloqué les envois d'emails.",
-                'instruction' => "Attendez {$waitMinutes} minutes avant de réessayer.",
-                'débloquer_commande' => "Exécutez: php artisan email:unblock"
-            ], 429);
-        }
-
         $request->validate([
             'participant_id' => 'required|exists:participants,id',
         ]);
 
         try {
-            DB::beginTransaction();
-
             $participant = Participant::findOrFail($request->participant_id);
 
-            // Vérifier si une attestation existe déjà
+            // ✅ Vérifier attestation existante AVANT toute action
             $existing = Attestation::where('participant_id', $participant->id)
-                                ->where('periode_id', $participant->periode_id)
-                                ->first();
+                ->where('periode_id', $participant->periode_id)
+                ->first();
 
             if ($existing) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Une attestation existe déjà pour ce participant.'
+                    'message' => 'Une attestation existe déjà pour ce participant.',
+                    'existing_attestation' => $existing->attestation_number
                 ], 422);
             }
 
-            // Message d'attente
-            Log::info("🔄 Tentative création attestation pour: " . $participant->email);
+            // ✅ Pas de transaction ici car le Service gère tout
+            Log::info("🔄 Création attestation pour: {$participant->email}");
 
             $attestation = $this->attestationService->createAttestation(
                 $participant,
                 auth()->id()
             );
 
-            DB::commit();
-
             return response()->json([
                 'success' => true,
-                'message' => 'Attestation créée avec succès.',
-                'warning' => '⚠️ Les emails sont limités à 20/heure avec 30 secondes entre chaque.',
-                'next_possible' => 'Prochain email dans 30+ secondes'
+                'message' => 'Attestation créée et envoyée avec succès.',
+                'attestation' => $attestation,
+                'info' => [
+                    'next_email_in' => '30+ secondes',
+                    'hourly_limit' => '20 emails/heure'
+                ]
             ]);
 
         } catch (\Exception $e) {
-            DB::rollBack();
+            Log::error("❌ Erreur création: " . $e->getMessage());
 
-            // Message spécifique pour rate limit
-            if (str_contains($e->getMessage(), 'Trop d\'emails')) {
-                return response()->json([
-                    'success' => false,
-                    'message' => $e->getMessage(),
-                    'instruction' => 'Veuillez patienter avant de réessayer.',
-                    'type' => 'rate_limit'
-                ], 429);
+            // ✅ Messages spécifiques selon le type d'erreur
+            $message = $e->getMessage();
+            $statusCode = 500;
+
+            if (str_contains($message, 'attendre') || str_contains($message, 'Attendez')) {
+                $statusCode = 429; // Too Many Requests
+            } elseif (str_contains($message, 'Hostinger a bloqué')) {
+                $statusCode = 503; // Service Unavailable
+            } elseif (str_contains($message, 'Format d\'email invalide')) {
+                $statusCode = 422; // Unprocessable Entity
             }
 
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la création: ' . $e->getMessage()
-            ], 500);
+                'message' => $message,
+                'type' => $statusCode === 429 ? 'rate_limit' : 'error'
+            ], $statusCode);
         }
     }
 
@@ -357,15 +348,33 @@ class AttestationController extends Controller
     /**
      * Envoyer l'attestation par email
      */
-    public function sendEmail($id)
+        public function sendEmail($id)
     {
         try {
+            // ✅ Vérifier blocage Hostinger
+            $blockedUntil = Cache::get('hostinger_blocked_until', 0);
+            if ($blockedUntil > time()) {
+                $waitMinutes = ceil(($blockedUntil - time()) / 60);
+                return response()->json([
+                    'success' => false,
+                    'message' => "Hostinger a bloqué les envois. Attendez {$waitMinutes} minutes."
+                ], 503);
+            }
+
             $attestation = Attestation::with('participant')->findOrFail($id);
 
             if (!$attestation->participant->email) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Le participant n\'a pas d\'adresse email.'
+                ], 422);
+            }
+
+            // ✅ Validation format email
+            if (!filter_var($attestation->participant->email, FILTER_VALIDATE_EMAIL)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Format d\'email invalide: ' . $attestation->participant->email
                 ], 422);
             }
 
@@ -437,14 +446,31 @@ class AttestationController extends Controller
     /**
      * Statistiques
      */
-    public function stats(Request $request)
+        public function stats(Request $request)
     {
+        $hourKey = 'email_count_hour_' . date('Y-m-d-H');
+        $emailsSentThisHour = Cache::get($hourKey, 0);
+        $lastEmailTimestamp = Cache::get('last_email_sent_timestamp', 0);
+        $blockedUntil = Cache::get('hostinger_blocked_until', 0);
+
         $stats = [
             'total' => Attestation::count(),
             'sent' => Attestation::where('status', 'sent')->count(),
             'pending' => Attestation::where('status', 'pending')->count(),
+            'failed' => Attestation::where('email_status', 'failed')->count(),
             'total_views' => Attestation::sum('view_count'),
             'this_month' => Attestation::whereMonth('created_at', now()->month)->count(),
+
+            // ✅ Infos quota
+            'quota' => [
+                'emails_sent_this_hour' => $emailsSentThisHour,
+                'max_per_hour' => 20,
+                'remaining' => max(0, 20 - $emailsSentThisHour),
+                'last_email_ago' => $lastEmailTimestamp > 0 ? (time() - $lastEmailTimestamp) : null,
+                'can_send_now' => $lastEmailTimestamp === 0 || (time() - $lastEmailTimestamp) >= 30,
+                'hostinger_blocked' => $blockedUntil > time(),
+                'blocked_until' => $blockedUntil > time() ? date('H:i:s', $blockedUntil) : null,
+            ]
         ];
 
         return response()->json([

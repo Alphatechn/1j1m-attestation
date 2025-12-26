@@ -11,141 +11,178 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 class AttestationService
 {
-    // Délai MINIMUM ABSOLU entre chaque email (Hostinger est TRÈS strict)
-    const MIN_DELAY_SECONDS = 30; // 30 SECONDES minimum !
-    const MAX_EMAILS_PER_HOUR = 20; // 20 max, pas 30 !
+    // ✅ CONSTANTES UNIFIÉES
+    const MIN_DELAY_SECONDS = 30;
+    const MAX_EMAILS_PER_HOUR = 20; // Utilisé partout maintenant
+
     /**
      * Créer une attestation
      */
     public function createAttestation(Participant $participant, $userId = null)
     {
-        // ⭐⭐ VÉRIFICATION AVANT TOUTE CHOSE ⭐⭐
-        if (!$this->canSendEmail()) {
-            $waitTime = $this->getRequiredWaitTime();
-            Log::warning("🚫 BLOCAGE PRÉVENTIF: Attendez {$waitTime} secondes avant de réessayer");
-            throw new \Exception("Trop d'emails envoyés récemment. Attendez {$waitTime} secondes.");
+        // ✅ 1. LOCK ATOMIQUE (évite les race conditions)
+        $lock = Cache::lock('email_send_lock', 35);
+
+        if (!$lock->get()) {
+            throw new \Exception("Un email est déjà en cours d'envoi. Veuillez patienter 30 secondes.");
         }
 
-        // ⭐⭐ APPLIQUER LE DÉLAI MAINTENANT (avant création) ⭐⭐
-        $this->applyMandatoryDelay();
+        try {
+            // ✅ 2. Vérifications AVANT création
+            $this->validateEmailQuota();
+            $this->enforceMinimumDelay();
 
-        // Créer l'attestation
-        $attestation = Attestation::create([
-            'participant_id' => $participant->id,
-            'periode_id' => $participant->periode_id,
-            'generated_by' => $userId,
-            'issue_date' => Carbon::now(),
-            'status' => 'pending',
-            'content_text' => $this->generateContentText($participant),
-        ]);
+            // ✅ 3. Validation format email
+            if (!filter_var($participant->email, FILTER_VALIDATE_EMAIL)) {
+                throw new \Exception("Format d'email invalide: {$participant->email}");
+            }
 
-        // Envoi email
-        $this->sendAttestationByEmail($attestation);
+            // ✅ 4. Créer l'attestation
+            $attestation = Attestation::create([
+                'participant_id' => $participant->id,
+                'periode_id' => $participant->periode_id,
+                'generated_by' => $userId,
+                'issue_date' => Carbon::now(),
+                'status' => 'pending',
+                'content_text' => $this->generateContentText($participant),
+            ]);
 
-        return $attestation;
+            // ✅ 5. Envoi email
+            $this->sendAttestationByEmail($attestation);
+
+            // ✅ 6. INCRÉMENTER APRÈS SUCCÈS UNIQUEMENT
+            $this->incrementEmailCounters();
+
+            return $attestation;
+
+        } finally {
+            // ✅ Toujours libérer le lock
+            $lock->release();
+        }
     }
 
-    /**
-     * Vérifier si on PEUT envoyer un email
+        /**
+     * ✅ CORRECTION: Vérification quota avec log détaillé
      */
-    private function canSendEmail(): bool
+    private function validateEmailQuota(): void
     {
-        // 1. Vérifier la limite horaire
+        // Vérifier blocage Hostinger
+        $blockedUntil = Cache::get('hostinger_blocked_until', 0);
+        if ($blockedUntil > time()) {
+            $waitMinutes = ceil(($blockedUntil - time()) / 60);
+            throw new \Exception("Hostinger a bloqué les envois. Attendez {$waitMinutes} minutes.");
+        }
+
+        // Vérifier limite horaire
         $hourKey = 'email_count_hour_' . date('Y-m-d-H');
         $currentCount = Cache::get($hourKey, 0);
 
         if ($currentCount >= self::MAX_EMAILS_PER_HOUR) {
-            Log::warning("🚫 Limite horaire atteinte: {$currentCount}/" . self::MAX_EMAILS_PER_HOUR);
-            return false;
+            $minutesLeft = 60 - (int)date('i');
+            throw new \Exception("Limite horaire atteinte ({$currentCount}/" . self::MAX_EMAILS_PER_HOUR . "). Réessayez dans {$minutesLeft} minutes.");
         }
 
-        // 2. Vérifier le délai depuis le dernier email
-        $lastEmailKey = 'last_email_sent_timestamp';
-        $lastSent = Cache::get($lastEmailKey, 0);
-
-        if ($lastSent > 0) {
-            $elapsed = time() - $lastSent;
-            if ($elapsed < self::MIN_DELAY_SECONDS) {
-                Log::warning("🚫 Délai insuffisant: {$elapsed}s/" . self::MIN_DELAY_SECONDS . "s");
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-     /**
-     * Temps d'attente requis
-     */
-    private function getRequiredWaitTime(): int
-    {
-        $lastEmailKey = 'last_email_sent_timestamp';
-        $lastSent = Cache::get($lastEmailKey, 0);
-
-        if ($lastSent === 0) {
-            return 0;
-        }
-
-        $elapsed = time() - $lastSent;
-        $requiredWait = max(0, self::MIN_DELAY_SECONDS - $elapsed);
-
-        return $requiredWait;
+        Log::info("📊 Quota actuel: {$currentCount}/" . self::MAX_EMAILS_PER_HOUR);
     }
 
     /**
-     * Appliquer le délai OBLIGATOIRE
+     * ✅ CORRECTION: Délai non-bloquant avec timestamp précis
      */
-    private function applyMandatoryDelay(): void
+    private function enforceMinimumDelay(): void
     {
-        $lastEmailKey = 'last_email_sent_timestamp';
-        $lastSent = Cache::get($lastEmailKey, 0);
+        $lastSent = Cache::get('last_email_sent_timestamp', 0);
 
         if ($lastSent > 0) {
             $elapsed = time() - $lastSent;
+            $requiredWait = self::MIN_DELAY_SECONDS - $elapsed;
 
-            if ($elapsed < self::MIN_DELAY_SECONDS) {
-                $waitTime = self::MIN_DELAY_SECONDS - $elapsed;
-                Log::info("⏳ DÉLAI IMPOSÉ: {$waitTime} secondes (elapsed: {$elapsed}s)");
-
-                // Afficher un compte à rebours dans les logs
-                for ($i = $waitTime; $i > 0; $i--) {
-                    if ($i % 5 === 0 || $i <= 3) {
-                        Log::info("⏳ Attente: {$i} secondes restantes...");
-                    }
-                    sleep(1);
-                }
+            if ($requiredWait > 0) {
+                Log::info("⏳ Délai requis: {$requiredWait}s");
+                throw new \Exception("Veuillez attendre {$requiredWait} secondes avant le prochain envoi.");
             }
         }
-
-        // Enregistrer MAINTENANT (avant l'envoi réel)
-        Cache::put($lastEmailKey, time(), 300);
     }
 
     /**
-     * Imposer un délai global entre les envois d'emails
+     * ✅ CORRECTION: Incrémenter APRÈS succès uniquement
      */
-        private function enforceGlobalDelay()
+    private function incrementEmailCounters(): void
     {
-        $cacheKey = 'global_email_delay_lock';
-        $lastEmailTime = Cache::get($cacheKey, 0);
-        $currentTime = time();
+        $hourKey = 'email_count_hour_' . date('Y-m-d-H');
+        Cache::increment($hourKey, 1, 3600);
+        Cache::put('last_email_sent_timestamp', time(), 300);
 
-        // Hostinger exige MINIMUM 20 secondes entre chaque email
-        $requiredDelay = 20;
+        $newCount = Cache::get($hourKey, 0);
+        Log::info("✅ Email envoyé. Nouveau compteur: {$newCount}/" . self::MAX_EMAILS_PER_HOUR);
+    }
 
-        if ($lastEmailTime > 0) {
-            $elapsed = $currentTime - $lastEmailTime;
+    /**
+     * Envoyer l'attestation par email
+     */
 
-            if ($elapsed < $requiredDelay) {
-                $waitTime = $requiredDelay - $elapsed;
-                Log::info("⏳ [GLOBAL] Attente imposée: {$waitTime} secondes");
-                Log::info("⏳ [GLOBAL] Dernier email il y a: {$elapsed} secondes");
-                sleep($waitTime);
-            }
+    public function sendAttestationByEmail(Attestation $attestation)
+    {
+        $participant = $attestation->participant;
+
+        if (!$participant->email) {
+            throw new \Exception("Le participant n'a pas d'adresse email.");
         }
 
-        // Bloquer pour les prochains emails
-        Cache::put($cacheKey, time(), 60); // Expire après 1 minute
+        // ✅ Validation format
+        if (!filter_var($participant->email, FILTER_VALIDATE_EMAIL)) {
+            throw new \Exception("Format d'email invalide: {$participant->email}");
+        }
+
+        try {
+            Log::info("📧 Envoi à: {$participant->email}");
+
+            // Générer le PDF
+            $pdfContent = $this->generatePDFOutput($attestation);
+            $fileName = 'attestation_' . $attestation->attestation_number . '_' . $participant->full_name . '.pdf';
+
+            // Envoyer l'email
+            Mail::send('emails.attestation', [
+                'participant' => $participant,
+                'attestation' => $attestation,
+                'periode' => $attestation->periode,
+            ], function ($message) use ($participant, $pdfContent, $fileName) {
+                $message->to($participant->email, $participant->full_name)
+                    ->subject('Votre attestation de participation')
+                    ->attachData($pdfContent, $fileName, [
+                        'mime' => 'application/pdf',
+                    ]);
+            });
+
+            // ✅ Mettre à jour statut
+            $attestation->update([
+                'status' => 'sent',
+                'sent_at' => now(),
+                'email_status' => 'success'
+            ]);
+
+            Log::info("✅ Email envoyé avec succès");
+            return true;
+
+        } catch (\Exception $e) {
+            Log::error("❌ Échec envoi: " . $e->getMessage());
+
+            // ✅ Enregistrer l'erreur
+            $attestation->update([
+                'email_status' => 'failed',
+                'email_error' => substr($e->getMessage(), 0, 200)
+            ]);
+
+            // ✅ Détecter rate limit Hostinger
+            if (str_contains($e->getMessage(), '451') ||
+                str_contains($e->getMessage(), 'rate') ||
+                str_contains($e->getMessage(), 'limit')) {
+
+                Log::critical("🚨 RATE LIMIT HOSTINGER DÉTECTÉ");
+                Cache::put('hostinger_blocked_until', time() + 3600, 3700);
+            }
+
+            throw $e;
+        }
     }
 
 
@@ -163,176 +200,8 @@ class AttestationService
     }
 
     /**
-     * Générer le PDF à la volée (sans stockage)
+     * Générer le PDF de l'attestation
      */
-    // public function generatePDFOutput(Attestation $attestation)
-    // {
-    //     $participant = $attestation->participant;
-    //     $periode = $attestation->periode;
-
-    //     // Créer une instance TCPDF
-    //     $pdf = new TCPDF('L', 'mm', 'A4', true, 'UTF-8');
-
-    //     // Paramètres du document
-    //     $pdf->SetCreator('Plateforme Attestations');
-    //     $pdf->SetAuthor('Système de Gestion');
-    //     $pdf->SetTitle('Attestation - ' . $attestation->attestation_number);
-    //     $pdf->SetSubject('Attestation de participation');
-
-    //     // Marges
-    //     $pdf->SetMargins(20, 20, 20);
-    //     $pdf->SetAutoPageBreak(true, 20);
-
-    //     // Supprimer header/footer par défaut
-    //     $pdf->setPrintHeader(false);
-    //     $pdf->setPrintFooter(false);
-
-    //     // Ajouter une page
-    //     $pdf->AddPage();
-
-    //     // Logo ou En-tête (optionnel)
-    //     // $pdf->Image('path/to/logo.png', 15, 10, 30);
-
-    //     // Titre principal
-    //     $pdf->SetFont('helvetica', 'B', 24);
-    //     $pdf->SetTextColor(0, 51, 102); // Bleu foncé
-    //     $pdf->Cell(0, 15, 'ATTESTATION', 0, 1, 'C');
-    //     $pdf->SetFont('helvetica', '', 14);
-    //     $pdf->Cell(0, 8, 'DE PARTICIPATION', 0, 1, 'C');
-
-    //     // Ligne de séparation
-    //     $pdf->SetLineWidth(0.5);
-    //     $pdf->SetDrawColor(0, 51, 102);
-    //     $pdf->Line(60, $pdf->GetY() + 5, 150, $pdf->GetY() + 5);
-    //     $pdf->Ln(15);
-
-    //     // Numéro d'attestation
-    //     $pdf->SetFont('helvetica', 'I', 10);
-    //     $pdf->SetTextColor(100, 100, 100);
-    //     $pdf->Cell(0, 5, 'N° ' . $attestation->attestation_number, 0, 1, 'R');
-    //     $pdf->SetTextColor(0, 0, 0);
-    //     $pdf->Ln(10);
-
-    //     // Contenu principal
-    //     $pdf->SetFont('helvetica', '', 12);
-    //     $pdf->MultiCell(0, 6, $attestation->content_text, 0, 'J', 0, 1);
-    //     $pdf->Ln(15);
-
-    //     // Encadré avec les informations
-    //     $pdf->SetFillColor(240, 240, 240);
-    //     $pdf->SetFont('helvetica', 'B', 11);
-    //     $pdf->Cell(0, 8, 'INFORMATIONS DU PARTICIPANT', 0, 1, 'L', true);
-    //     $pdf->Ln(5);
-
-    //     // Informations participant
-    //     $pdf->SetFont('helvetica', 'B', 11);
-    //     $pdf->Cell(50, 7, 'Nom complet :', 0, 0);
-    //     $pdf->SetFont('helvetica', '', 11);
-    //     $pdf->Cell(0, 7, $participant->full_name, 0, 1);
-
-    //     if ($participant->email) {
-    //         $pdf->SetFont('helvetica', 'B', 11);
-    //         $pdf->Cell(50, 7, 'Email :', 0, 0);
-    //         $pdf->SetFont('helvetica', '', 11);
-    //         $pdf->Cell(0, 7, $participant->email, 0, 1);
-    //     }
-
-    //     if ($participant->matricule) {
-    //         $pdf->SetFont('helvetica', 'B', 11);
-    //         $pdf->Cell(50, 7, 'Matricule :', 0, 0);
-    //         $pdf->SetFont('helvetica', '', 11);
-    //         $pdf->Cell(0, 7, $participant->matricule, 0, 1);
-    //     }
-
-    //     if ($participant->organisation) {
-    //         $pdf->SetFont('helvetica', 'B', 11);
-    //         $pdf->Cell(50, 7, 'Organisation :', 0, 0);
-    //         $pdf->SetFont('helvetica', '', 11);
-    //         $pdf->Cell(0, 7, $participant->organisation, 0, 1);
-    //     }
-
-    //     if ($participant->fonction) {
-    //         $pdf->SetFont('helvetica', 'B', 11);
-    //         $pdf->Cell(50, 7, 'Fonction :', 0, 0);
-    //         $pdf->SetFont('helvetica', '', 11);
-    //         $pdf->Cell(0, 7, $participant->fonction, 0, 1);
-    //     }
-
-    //     $pdf->Ln(10);
-
-    //     // Période
-    //     $pdf->SetFillColor(240, 240, 240);
-    //     $pdf->SetFont('helvetica', 'B', 11);
-    //     $pdf->Cell(0, 8, 'PÉRIODE DE FORMATION', 0, 1, 'L', true);
-    //     $pdf->Ln(3);
-
-    //     $pdf->SetFont('helvetica', '', 11);
-    //     $pdf->Cell(0, 7, $periode->full_libelle, 0, 1);
-
-    //     if ($periode->description) {
-    //         $pdf->SetFont('helvetica', 'I', 9);
-    //         $pdf->MultiCell(0, 5, $periode->description, 0, 'L');
-    //     }
-
-    //     $pdf->Ln(10);
-
-    //     // Date d'émission
-    //     $pdf->SetFont('helvetica', 'B', 11);
-    //     $pdf->Cell(50, 7, 'Fait le :', 0, 0);
-    //     $pdf->SetFont('helvetica', '', 11);
-    //     $pdf->Cell(0, 7, $attestation->issue_date->locale('fr')->isoFormat('DD MMMM YYYY'), 0, 1);
-
-    //     $pdf->Ln(15);
-
-    //     // QR Code généré directement avec TCPDF
-    //     $verificationUrl = route('public.attestations.verify', ['token' => $attestation->qr_token]);
-
-    //     // Position du QR Code
-    //     $qrX = 15;
-    //     $qrY = $pdf->GetY();
-    //     $qrSize = 35;
-
-    //     // Générer le QR Code avec TCPDF (style='', pas de paramètre supplémentaire)
-    //     $pdf->write2DBarcode(
-    //         $verificationUrl,
-    //         'QRCODE,H',  // Type et niveau de correction d'erreur
-    //         $qrX,        // X position
-    //         $qrY,        // Y position
-    //         $qrSize,     // Width
-    //         $qrSize,     // Height
-    //         [
-    //             'border' => false,
-    //             'padding' => 0,
-    //             'fgcolor' => [0, 0, 0],
-    //             'bgcolor' => [255, 255, 255]
-    //         ],
-    //         'N'
-    //     );
-
-    //     // Texte à côté du QR Code
-    //     $pdf->SetXY($qrX + $qrSize + 10, $qrY);
-    //     $pdf->SetFont('helvetica', 'B', 10);
-    //     $pdf->MultiCell(0, 5, "Vérification de l'attestation", 0, 'L');
-
-    //     $pdf->SetXY($qrX + $qrSize + 10, $qrY + 8);
-    //     $pdf->SetFont('helvetica', '', 9);
-    //     $pdf->MultiCell(0, 4, "Scannez ce code QR ou visitez notre plateforme pour vérifier l'authenticité de cette attestation.", 0, 'L');
-
-    //     $pdf->SetXY($qrX + $qrSize + 10, $qrY + 20);
-    //     $pdf->SetFont('helvetica', 'I', 8);
-    //     $pdf->SetTextColor(100, 100, 100);
-    //     $pdf->MultiCell(0, 4, "URL: " . $verificationUrl, 0, 'L');
-
-    //     // Pied de page avec signature (optionnel)
-    //     $pdf->SetY(-40);
-    //     $pdf->SetFont('helvetica', 'B', 10);
-    //     $pdf->Cell(0, 7, 'Le Directeur / La Direction', 0, 1, 'R');
-
-    //     // Retourner le PDF en string (pas de fichier créé)
-    //     return $pdf->Output('', 'S');
-    // }
-
-
     public function generatePDFOutput(Attestation $attestation)
     {
         define('TCPDF_FONTS_DIR', storage_path('all_font/'));
@@ -492,97 +361,6 @@ class AttestationService
         |--------------------------------------------------------------------------
         */
         return $pdf->Output('', 'S');
-    }
-
-    /**
-     * Envoyer l'attestation par email
-     */
-     public function sendAttestationByEmail(Attestation $attestation)
-    {
-        $participant = $attestation->participant;
-
-        if (!$participant->email) {
-            throw new \Exception("Le participant n'a pas d'adresse email.");
-        }
-
-        try {
-            // Incrémenter le compteur horaire AVANT l'envoi
-            $hourKey = 'email_count_hour_' . date('Y-m-d-H');
-            $currentCount = Cache::get($hourKey, 0);
-            Cache::put($hourKey, $currentCount + 1, 3600);
-
-            Log::info("📊 [AVANT ENVOI] Compteur: " . ($currentCount + 1) . "/" . self::MAX_EMAILS_PER_HOUR);
-            Log::info("📧 Début envoi à: " . $participant->email);
-
-            // Générer le PDF
-            $pdfContent = $this->generatePDFOutput($attestation);
-            $fileName = 'attestation_' . $attestation->attestation_number . '_'.$participant->full_name. '.pdf';
-
-            // Envoyer l'email avec le PDF en pièce jointe
-            Mail::send('emails.attestation', [
-                'participant' => $participant,
-                'attestation' => $attestation,
-                'periode' => $attestation->periode,
-            ], function ($message) use ($participant, $pdfContent, $fileName) {
-                $message->to($participant->email, $participant->full_name)
-                        ->subject('Votre attestation de participation')
-                        ->attachData($pdfContent, $fileName, [
-                            'mime' => 'application/pdf',
-                        ]);
-            });
-
-            // Mettre à jour le statut
-            $attestation->update([
-                'status' => 'sent',
-                'sent_at' => now(),
-                'email_status' => 'success'
-            ]);
-
-            Log::info("✅ SUCCÈS: Email envoyé à " . $participant->email);
-            Log::info("⏰ Prochain email possible dans: " . self::MIN_DELAY_SECONDS . " secondes");
-
-            return true;
-
-        } catch (\Exception $e) {
-            Log::error('❌ ÉCHEC: ' . $e->getMessage());
-
-            $attestation->update([
-                'email_status' => 'failed',
-                'email_error' => substr($e->getMessage(), 0, 200)
-            ]);
-
-            // Si c'est un rate limit, attendre 1 heure
-            if (str_contains($e->getMessage(), '451') || str_contains($e->getMessage(), 'Ratelimit')) {
-                Log::critical("🚨 🚨 RATE LIMIT HOSTINGER DÉTECTÉ 🚨 🚨");
-                Log::critical("💡 ATTENDRE 1 HEURE AVANT TOUT NOUVEL ENVOI");
-
-                // Bloquer pour 1 heure
-                Cache::put('hostinger_blocked_until', time() + 3600, 3700);
-            }
-
-            throw $e;
-        }
-    }
-
-     /**
-     * Vérifier la limite horaire Hostinger (max 30 emails/heure pour être safe)
-     */
-    private function checkHourlyLimit()
-    {
-        $hourKey = 'email_count_hour_' . date('Y-m-d-H');
-        $currentCount = Cache::get($hourKey, 0);
-
-        // Hostinger bloque vers 50-100 emails/heure, on prend 30 pour être safe
-        $maxPerHour = 30;
-
-        if ($currentCount >= $maxPerHour) {
-            $minutesLeft = 60 - date('i');
-            throw new \Exception("Limite d'envoi atteinte ({$maxPerHour} emails/heure). Réessayez dans {$minutesLeft} minutes.");
-        }
-
-        // Incrémenter le compteur
-        Cache::put($hourKey, $currentCount + 1, 3600);
-        Log::info("📊 Compteur emails cette heure: " . ($currentCount + 1) . "/{$maxPerHour}");
     }
 
     /**
