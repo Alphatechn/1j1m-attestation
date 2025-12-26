@@ -13,36 +13,37 @@ class AttestationService
 {
     // Compteur STATIQUE pour suivre les envois dans la même requête
     private static $emailCountThisRequest = 0;
-    /**
-     * Créer une attestation
-     */
-    public function createAttestation(Participant $participant, $userId = null)
-    {
-        // ⭐⭐ DÉLAI AUTOMATIQUE POUR LES ENVOIS EN MASSE ⭐⭐
-        if (self::$emailCountThisRequest > 0) {
-            // Délai progressif : 8s, 9s, 10s...
-            $delaySeconds = 8 + (self::$emailCountThisRequest * 1);
-            Log::info("⏳ Délai anti-rate limit #" . self::$emailCountThisRequest . ": " . $delaySeconds . " secondes");
-            sleep($delaySeconds);
-        }
+/**
+ * Créer une attestation
+ */
+public function createAttestation(Participant $participant, $userId = null)
+{
+    // ⭐⭐ AJOUTEZ CE BLOQUET AU DÉBUT ⭐⭐
+    static $creationCount = 0;
 
-        // Incrémenter le compteur
-        self::$emailCountThisRequest++;
-
-        $attestation = Attestation::create([
-            'participant_id' => $participant->id,
-            'periode_id' => $participant->periode_id,
-            'generated_by' => $userId,
-            'issue_date' => Carbon::now(),
-            'status' => 'pending',
-            'content_text' => $this->generateContentText($participant),
-        ]);
-
-        // Envoi email
-        $this->sendAttestationByEmail($attestation);
-
-        return $attestation;
+    if ($creationCount > 0) {
+        // Délai progressif : 15s, 20s, 25s...
+        $delaySeconds = 15 + ($creationCount * 5);
+        \Log::info("⏳ DÉLAI CRÉATION #{$creationCount}: {$delaySeconds} secondes");
+        sleep($delaySeconds);
     }
+
+    $creationCount++;
+    // ⭐⭐ FIN DE L'AJOUT ⭐⭐
+
+    $attestation = Attestation::create([
+        'participant_id' => $participant->id,
+        'periode_id' => $participant->periode_id,
+        'generated_by' => $userId,
+        'issue_date' => Carbon::now(),
+        'status' => 'pending',
+        'content_text' => $this->generateContentText($participant),
+    ]);
+
+    $this->sendAttestationByEmail($attestation);
+
+    return $attestation;
+}
 
     /**
      * Générer le contenu texte de l'attestation
@@ -394,6 +395,15 @@ class AttestationService
      */
     public function sendAttestationByEmail(Attestation $attestation)
     {
+
+         // ⭐⭐ PETIT DÉLAI SUPPLÉMENTAIRE ⭐⭐
+        static $emailCount = 0;
+        if ($emailCount > 0) {
+            $extraDelay = 5;
+            \Log::info("⏳ DÉLAI SUPPLÉMENTAIRE: {$extraDelay} secondes");
+            sleep($extraDelay);
+        }
+        $emailCount++;
         $participant = $attestation->participant;
 
         if (!$participant->email) {
