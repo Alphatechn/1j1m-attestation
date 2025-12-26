@@ -11,16 +11,25 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 class AttestationService
 {
-    // Compteur STATIQUE pour suivre les envois dans la même requête
-    private static $emailCountThisRequest = 0;
-/**
- * Créer une attestation
- */
- public function createAttestation(Participant $participant, $userId = null)
+    // Délai MINIMUM ABSOLU entre chaque email (Hostinger est TRÈS strict)
+    const MIN_DELAY_SECONDS = 30; // 30 SECONDES minimum !
+    const MAX_EMAILS_PER_HOUR = 20; // 20 max, pas 30 !
+    /**
+     * Créer une attestation
+     */
+    public function createAttestation(Participant $participant, $userId = null)
     {
-        // ⭐⭐ DÉLAI GLOBAL OBLIGATOIRE - UTILISE LE CACHE ⭐⭐
-        $this->enforceGlobalDelay();
+        // ⭐⭐ VÉRIFICATION AVANT TOUTE CHOSE ⭐⭐
+        if (!$this->canSendEmail()) {
+            $waitTime = $this->getRequiredWaitTime();
+            Log::warning("🚫 BLOCAGE PRÉVENTIF: Attendez {$waitTime} secondes avant de réessayer");
+            throw new \Exception("Trop d'emails envoyés récemment. Attendez {$waitTime} secondes.");
+        }
 
+        // ⭐⭐ APPLIQUER LE DÉLAI MAINTENANT (avant création) ⭐⭐
+        $this->applyMandatoryDelay();
+
+        // Créer l'attestation
         $attestation = Attestation::create([
             'participant_id' => $participant->id,
             'periode_id' => $participant->periode_id,
@@ -35,6 +44,83 @@ class AttestationService
 
         return $attestation;
     }
+
+    /**
+     * Vérifier si on PEUT envoyer un email
+     */
+    private function canSendEmail(): bool
+    {
+        // 1. Vérifier la limite horaire
+        $hourKey = 'email_count_hour_' . date('Y-m-d-H');
+        $currentCount = Cache::get($hourKey, 0);
+
+        if ($currentCount >= self::MAX_EMAILS_PER_HOUR) {
+            Log::warning("🚫 Limite horaire atteinte: {$currentCount}/" . self::MAX_EMAILS_PER_HOUR);
+            return false;
+        }
+
+        // 2. Vérifier le délai depuis le dernier email
+        $lastEmailKey = 'last_email_sent_timestamp';
+        $lastSent = Cache::get($lastEmailKey, 0);
+
+        if ($lastSent > 0) {
+            $elapsed = time() - $lastSent;
+            if ($elapsed < self::MIN_DELAY_SECONDS) {
+                Log::warning("🚫 Délai insuffisant: {$elapsed}s/" . self::MIN_DELAY_SECONDS . "s");
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+     /**
+     * Temps d'attente requis
+     */
+    private function getRequiredWaitTime(): int
+    {
+        $lastEmailKey = 'last_email_sent_timestamp';
+        $lastSent = Cache::get($lastEmailKey, 0);
+
+        if ($lastSent === 0) {
+            return 0;
+        }
+
+        $elapsed = time() - $lastSent;
+        $requiredWait = max(0, self::MIN_DELAY_SECONDS - $elapsed);
+
+        return $requiredWait;
+    }
+
+    /**
+     * Appliquer le délai OBLIGATOIRE
+     */
+    private function applyMandatoryDelay(): void
+    {
+        $lastEmailKey = 'last_email_sent_timestamp';
+        $lastSent = Cache::get($lastEmailKey, 0);
+
+        if ($lastSent > 0) {
+            $elapsed = time() - $lastSent;
+
+            if ($elapsed < self::MIN_DELAY_SECONDS) {
+                $waitTime = self::MIN_DELAY_SECONDS - $elapsed;
+                Log::info("⏳ DÉLAI IMPOSÉ: {$waitTime} secondes (elapsed: {$elapsed}s)");
+
+                // Afficher un compte à rebours dans les logs
+                for ($i = $waitTime; $i > 0; $i--) {
+                    if ($i % 5 === 0 || $i <= 3) {
+                        Log::info("⏳ Attente: {$i} secondes restantes...");
+                    }
+                    sleep(1);
+                }
+            }
+        }
+
+        // Enregistrer MAINTENANT (avant l'envoi réel)
+        Cache::put($lastEmailKey, time(), 300);
+    }
+
     /**
      * Imposer un délai global entre les envois d'emails
      */
@@ -411,7 +497,7 @@ class AttestationService
     /**
      * Envoyer l'attestation par email
      */
-    public function sendAttestationByEmail(Attestation $attestation)
+     public function sendAttestationByEmail(Attestation $attestation)
     {
         $participant = $attestation->participant;
 
@@ -420,8 +506,13 @@ class AttestationService
         }
 
         try {
-            // ⭐⭐ VÉRIFICATION LIMITE HORAIRE HOSTINGER ⭐⭐
-            $this->checkHourlyLimit();
+            // Incrémenter le compteur horaire AVANT l'envoi
+            $hourKey = 'email_count_hour_' . date('Y-m-d-H');
+            $currentCount = Cache::get($hourKey, 0);
+            Cache::put($hourKey, $currentCount + 1, 3600);
+
+            Log::info("📊 [AVANT ENVOI] Compteur: " . ($currentCount + 1) . "/" . self::MAX_EMAILS_PER_HOUR);
+            Log::info("📧 Début envoi à: " . $participant->email);
 
             // Générer le PDF
             $pdfContent = $this->generatePDFOutput($attestation);
@@ -447,17 +538,27 @@ class AttestationService
                 'email_status' => 'success'
             ]);
 
-            Log::info("✅ Email attestation envoyé avec succès: " . $attestation->id . " à " . $participant->email);
+            Log::info("✅ SUCCÈS: Email envoyé à " . $participant->email);
+            Log::info("⏰ Prochain email possible dans: " . self::MIN_DELAY_SECONDS . " secondes");
 
             return true;
 
         } catch (\Exception $e) {
-            Log::error('❌ Erreur envoi email attestation: ' . $e->getMessage());
+            Log::error('❌ ÉCHEC: ' . $e->getMessage());
 
             $attestation->update([
                 'email_status' => 'failed',
                 'email_error' => substr($e->getMessage(), 0, 200)
             ]);
+
+            // Si c'est un rate limit, attendre 1 heure
+            if (str_contains($e->getMessage(), '451') || str_contains($e->getMessage(), 'Ratelimit')) {
+                Log::critical("🚨 🚨 RATE LIMIT HOSTINGER DÉTECTÉ 🚨 🚨");
+                Log::critical("💡 ATTENDRE 1 HEURE AVANT TOUT NOUVEL ENVOI");
+
+                // Bloquer pour 1 heure
+                Cache::put('hostinger_blocked_until', time() + 3600, 3700);
+            }
 
             throw $e;
         }

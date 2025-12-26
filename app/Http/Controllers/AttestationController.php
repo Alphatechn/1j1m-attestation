@@ -9,6 +9,8 @@ use App\Services\AttestationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 
 class AttestationController extends Controller
@@ -39,22 +41,22 @@ class AttestationController extends Controller
     public function publicDownload($id)
     {
         try {
-            \Log::info("Téléchargement public - ID: {$id}");
+            Log::info("Téléchargement public - ID: {$id}");
 
             $attestation = Attestation::with(['participant', 'periode'])
                                     ->where('id', $id)
                                     ->first();
 
             if (!$attestation) {
-                \Log::warning("Attestation non trouvée pour téléchargement public: {$id}");
+                Log::warning("Attestation non trouvée pour téléchargement public: {$id}");
                 abort(404, 'Attestation non trouvée');
             }
 
-            \Log::info("Attestation publique trouvée: {$attestation->attestation_number}");
+            Log::info("Attestation publique trouvée: {$attestation->attestation_number}");
             return $this->attestationService->downloadPDF($attestation);
 
         } catch (\Exception $e) {
-            \Log::error("Erreur téléchargement public: " . $e->getMessage());
+            Log::error("Erreur téléchargement public: " . $e->getMessage());
             abort(500, 'Erreur lors du téléchargement');
         }
     }
@@ -65,22 +67,22 @@ class AttestationController extends Controller
     public function publicPreview($id)
     {
         try {
-            \Log::info("Preview public - ID: {$id}");
+            Log::info("Preview public - ID: {$id}");
 
             $attestation = Attestation::with(['participant', 'periode'])
                                     ->where('id', $id)
                                     ->first();
 
             if (!$attestation) {
-                \Log::warning("Attestation non trouvée pour preview public: {$id}");
+                Log::warning("Attestation non trouvée pour preview public: {$id}");
                 abort(404, 'Attestation non trouvée');
             }
 
-            \Log::info("Attestation publique trouvée pour preview: {$attestation->attestation_number}");
+            Log::info("Attestation publique trouvée pour preview: {$attestation->attestation_number}");
             return $this->attestationService->displayPDF($attestation);
 
         } catch (\Exception $e) {
-            \Log::error("Erreur preview public: " . $e->getMessage());
+            Log::error("Erreur preview public: " . $e->getMessage());
             abort(500, 'Erreur lors de la visualisation');
         }
     }
@@ -255,63 +257,80 @@ class AttestationController extends Controller
         return view('Attestations.index', compact('periodes'));
     }
 
-/**
- * Créer une attestation
- */
-public function store(Request $request)
-{
-    $request->validate([
-        'participant_id' => 'required|exists:participants,id',
-    ]);
-
-    try {
-        DB::beginTransaction();
-
-        $participant = Participant::findOrFail($request->participant_id);
-
-        // Vérifier si une attestation existe déjà
-        $existing = Attestation::where('participant_id', $participant->id)
-                               ->where('periode_id', $participant->periode_id)
-                               ->first();
-
-        if ($existing) {
+    /**
+     * Créer une attestation
+     */
+    public function store(Request $request)
+    {
+        // ⭐⭐ VÉRIFIER SI HOSTINGER A BLOQUÉ ⭐⭐
+        $blockedUntil = Cache::get('hostinger_blocked_until', 0);
+        if ($blockedUntil > time()) {
+            $waitMinutes = ceil(($blockedUntil - time()) / 60);
             return response()->json([
                 'success' => false,
-                'message' => 'Une attestation existe déjà pour ce participant.'
-            ], 422);
+                'message' => "🚨 Hostinger a bloqué les envois d'emails.",
+                'instruction' => "Attendez {$waitMinutes} minutes avant de réessayer.",
+                'débloquer_commande' => "Exécutez: php artisan email:unblock"
+            ], 429);
         }
 
-        // ⭐⭐ DÉLAI SUPPLÉMENTAIRE POUR ÊTRE SUPER SAFE ⭐⭐
-        static $requestCount = 0;
-        if ($requestCount > 0) {
-            $extraDelay = 5;
-            \Log::info("⏳ [CONTROLEUR] Délai supplémentaire: {$extraDelay} secondes");
-            sleep($extraDelay);
-        }
-        $requestCount++;
-
-        $attestation = $this->attestationService->createAttestation(
-            $participant,
-            auth()->id()
-        );
-
-        DB::commit();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Attestation créée avec succès.',
-            'note' => '📧 Email envoyé avec protection anti-blocage.',
-            'estimated_next_delay' => 'Prochain email dans 25+ secondes'
+        $request->validate([
+            'participant_id' => 'required|exists:participants,id',
         ]);
 
-    } catch (\Exception $e) {
-        DB::rollBack();
-        return response()->json([
-            'success' => false,
-            'message' => 'Erreur lors de la création: ' . $e->getMessage()
-        ], 500);
+        try {
+            DB::beginTransaction();
+
+            $participant = Participant::findOrFail($request->participant_id);
+
+            // Vérifier si une attestation existe déjà
+            $existing = Attestation::where('participant_id', $participant->id)
+                                ->where('periode_id', $participant->periode_id)
+                                ->first();
+
+            if ($existing) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Une attestation existe déjà pour ce participant.'
+                ], 422);
+            }
+
+            // Message d'attente
+            Log::info("🔄 Tentative création attestation pour: " . $participant->email);
+
+            $attestation = $this->attestationService->createAttestation(
+                $participant,
+                auth()->id()
+            );
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Attestation créée avec succès.',
+                'warning' => '⚠️ Les emails sont limités à 20/heure avec 30 secondes entre chaque.',
+                'next_possible' => 'Prochain email dans 30+ secondes'
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            // Message spécifique pour rate limit
+            if (str_contains($e->getMessage(), 'Trop d\'emails')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                    'instruction' => 'Veuillez patienter avant de réessayer.',
+                    'type' => 'rate_limit'
+                ], 429);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la création: ' . $e->getMessage()
+            ], 500);
+        }
     }
-}
 
     /**
      * Afficher une attestation
