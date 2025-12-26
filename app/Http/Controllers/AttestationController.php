@@ -243,7 +243,7 @@ class AttestationController extends Controller
                 });
             }
 
-            $attestations = $query->latest()->paginate(15);
+            $attestations = $query->orderBy('created_at', 'desc')->get();
 
             return response()->json([
                 'success' => true,
