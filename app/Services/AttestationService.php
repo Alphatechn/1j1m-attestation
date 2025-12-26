@@ -8,7 +8,7 @@ use TCPDF;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
-
+use Illuminate\Support\Facades\Cache;
 class AttestationService
 {
     // Compteur STATIQUE pour suivre les envois dans la même requête
@@ -16,34 +16,52 @@ class AttestationService
 /**
  * Créer une attestation
  */
-public function createAttestation(Participant $participant, $userId = null)
-{
-    // ⭐⭐ AJOUTEZ CE BLOQUET AU DÉBUT ⭐⭐
-    static $creationCount = 0;
+ public function createAttestation(Participant $participant, $userId = null)
+    {
+        // ⭐⭐ DÉLAI GLOBAL OBLIGATOIRE - UTILISE LE CACHE ⭐⭐
+        $this->enforceGlobalDelay();
 
-    if ($creationCount > 0) {
-        // Délai progressif : 15s, 20s, 25s...
-        $delaySeconds = 15 + ($creationCount * 5);
-        \Log::info("⏳ DÉLAI CRÉATION #{$creationCount}: {$delaySeconds} secondes");
-        sleep($delaySeconds);
+        $attestation = Attestation::create([
+            'participant_id' => $participant->id,
+            'periode_id' => $participant->periode_id,
+            'generated_by' => $userId,
+            'issue_date' => Carbon::now(),
+            'status' => 'pending',
+            'content_text' => $this->generateContentText($participant),
+        ]);
+
+        // Envoi email
+        $this->sendAttestationByEmail($attestation);
+
+        return $attestation;
+    }
+    /**
+     * Imposer un délai global entre les envois d'emails
+     */
+        private function enforceGlobalDelay()
+    {
+        $cacheKey = 'global_email_delay_lock';
+        $lastEmailTime = Cache::get($cacheKey, 0);
+        $currentTime = time();
+
+        // Hostinger exige MINIMUM 20 secondes entre chaque email
+        $requiredDelay = 20;
+
+        if ($lastEmailTime > 0) {
+            $elapsed = $currentTime - $lastEmailTime;
+
+            if ($elapsed < $requiredDelay) {
+                $waitTime = $requiredDelay - $elapsed;
+                Log::info("⏳ [GLOBAL] Attente imposée: {$waitTime} secondes");
+                Log::info("⏳ [GLOBAL] Dernier email il y a: {$elapsed} secondes");
+                sleep($waitTime);
+            }
+        }
+
+        // Bloquer pour les prochains emails
+        Cache::put($cacheKey, time(), 60); // Expire après 1 minute
     }
 
-    $creationCount++;
-    // ⭐⭐ FIN DE L'AJOUT ⭐⭐
-
-    $attestation = Attestation::create([
-        'participant_id' => $participant->id,
-        'periode_id' => $participant->periode_id,
-        'generated_by' => $userId,
-        'issue_date' => Carbon::now(),
-        'status' => 'pending',
-        'content_text' => $this->generateContentText($participant),
-    ]);
-
-    $this->sendAttestationByEmail($attestation);
-
-    return $attestation;
-}
 
     /**
      * Générer le contenu texte de l'attestation
@@ -395,15 +413,6 @@ public function createAttestation(Participant $participant, $userId = null)
      */
     public function sendAttestationByEmail(Attestation $attestation)
     {
-
-         // ⭐⭐ PETIT DÉLAI SUPPLÉMENTAIRE ⭐⭐
-        static $emailCount = 0;
-        if ($emailCount > 0) {
-            $extraDelay = 5;
-            \Log::info("⏳ DÉLAI SUPPLÉMENTAIRE: {$extraDelay} secondes");
-            sleep($extraDelay);
-        }
-        $emailCount++;
         $participant = $attestation->participant;
 
         if (!$participant->email) {
@@ -411,14 +420,8 @@ public function createAttestation(Participant $participant, $userId = null)
         }
 
         try {
-            // ⭐⭐ DOUBLE PROTECTION : Délai supplémentaire de 3 secondes ⭐⭐
-            static $methodCallCount = 0;
-            if ($methodCallCount > 0) {
-                $extraDelay = 3;
-                Log::info("⏳ Protection supplémentaire: " . $extraDelay . " secondes");
-                sleep($extraDelay);
-            }
-            $methodCallCount++;
+            // ⭐⭐ VÉRIFICATION LIMITE HORAIRE HOSTINGER ⭐⭐
+            $this->checkHourlyLimit();
 
             // Générer le PDF
             $pdfContent = $this->generatePDFOutput($attestation);
@@ -452,11 +455,33 @@ public function createAttestation(Participant $participant, $userId = null)
             Log::error('❌ Erreur envoi email attestation: ' . $e->getMessage());
 
             $attestation->update([
-                'email_status' => 'failed'
+                'email_status' => 'failed',
+                'email_error' => substr($e->getMessage(), 0, 200)
             ]);
 
             throw $e;
         }
+    }
+
+     /**
+     * Vérifier la limite horaire Hostinger (max 30 emails/heure pour être safe)
+     */
+    private function checkHourlyLimit()
+    {
+        $hourKey = 'email_count_hour_' . date('Y-m-d-H');
+        $currentCount = Cache::get($hourKey, 0);
+
+        // Hostinger bloque vers 50-100 emails/heure, on prend 30 pour être safe
+        $maxPerHour = 30;
+
+        if ($currentCount >= $maxPerHour) {
+            $minutesLeft = 60 - date('i');
+            throw new \Exception("Limite d'envoi atteinte ({$maxPerHour} emails/heure). Réessayez dans {$minutesLeft} minutes.");
+        }
+
+        // Incrémenter le compteur
+        Cache::put($hourKey, $currentCount + 1, 3600);
+        Log::info("📊 Compteur emails cette heure: " . ($currentCount + 1) . "/{$maxPerHour}");
     }
 
     /**

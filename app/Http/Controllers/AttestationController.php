@@ -255,53 +255,63 @@ class AttestationController extends Controller
         return view('Attestations.index', compact('periodes'));
     }
 
-    /**
-     * Créer une attestation
-     */
-    public function store(Request $request)
-    {
-        $request->validate([
-            'participant_id' => 'required|exists:participants,id',
-        ]);
+/**
+ * Créer une attestation
+ */
+public function store(Request $request)
+{
+    $request->validate([
+        'participant_id' => 'required|exists:participants,id',
+    ]);
 
-        try {
-            DB::beginTransaction();
+    try {
+        DB::beginTransaction();
 
-            $participant = Participant::findOrFail($request->participant_id);
+        $participant = Participant::findOrFail($request->participant_id);
 
-            // Vérifier si une attestation existe déjà
-            $existing = Attestation::where('participant_id', $participant->id)
-                                   ->where('periode_id', $participant->periode_id)
-                                   ->first();
+        // Vérifier si une attestation existe déjà
+        $existing = Attestation::where('participant_id', $participant->id)
+                               ->where('periode_id', $participant->periode_id)
+                               ->first();
 
-            if ($existing) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Une attestation existe déjà pour ce participant.'
-                ], 422);
-            }
-
-            $attestation = $this->attestationService->createAttestation(
-                $participant,
-                auth()->id()
-            );
-
-            DB::commit();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Attestation créée avec succès.',
-                'data' => $attestation->load(['participant', 'periode'])
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
+        if ($existing) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la création: ' . $e->getMessage()
-            ], 500);
+                'message' => 'Une attestation existe déjà pour ce participant.'
+            ], 422);
         }
+
+        // ⭐⭐ DÉLAI SUPPLÉMENTAIRE POUR ÊTRE SUPER SAFE ⭐⭐
+        static $requestCount = 0;
+        if ($requestCount > 0) {
+            $extraDelay = 5;
+            \Log::info("⏳ [CONTROLEUR] Délai supplémentaire: {$extraDelay} secondes");
+            sleep($extraDelay);
+        }
+        $requestCount++;
+
+        $attestation = $this->attestationService->createAttestation(
+            $participant,
+            auth()->id()
+        );
+
+        DB::commit();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Attestation créée avec succès.',
+            'note' => '📧 Email envoyé avec protection anti-blocage.',
+            'estimated_next_delay' => 'Prochain email dans 25+ secondes'
+        ]);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json([
+            'success' => false,
+            'message' => 'Erreur lors de la création: ' . $e->getMessage()
+        ], 500);
     }
+}
 
     /**
      * Afficher une attestation

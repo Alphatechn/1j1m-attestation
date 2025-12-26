@@ -8,6 +8,7 @@ use App\Http\Controllers\PeriodeController;
 use App\Http\Controllers\ParticipantController;
 use App\Http\Controllers\AttestationController;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Maatwebsite\Excel\Facades\Excel;
 /*
 |--------------------------------------------------------------------------
@@ -159,3 +160,22 @@ Route::middleware(['auth'])->group(function () {
 Route::get('/welcome', function () {
     return view('welcome'); // Page d'accueil simple
 })->name('welcome');
+Route::get('/email-status', function() {
+    $hourKey = 'email_count_hour_' . date('Y-m-d-H');
+    $count = Cache::get($hourKey, 0);
+    $delayLock = Cache::get('global_email_delay_lock', 0);
+
+    $lastEmailAgo = $delayLock ? (time() - $delayLock) : 'Jamais';
+
+    return response()->json([
+        'status' => 'ok',
+        'limites' => [
+            'emails_cette_heure' => $count . '/30',
+            'pourcentage' => round(($count / 30) * 100, 1) . '%',
+            'dernier_email_il_y_a' => $lastEmailAgo . ' secondes',
+            'prochain_email_possible_dans' => $delayLock ? max(0, 20 - $lastEmailAgo) : 0 . ' secondes',
+            'reinitialisation_compteur' => (60 - date('i')) . ' minutes'
+        ],
+        'recommandation' => $count >= 25 ? '🚨 PRESQUE LIMITE - Attendez avant plus d\'envois' : '✅ OK pour envoyer'
+    ]);
+});
