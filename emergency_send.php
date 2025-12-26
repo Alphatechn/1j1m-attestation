@@ -12,7 +12,7 @@ echo "🚨 MODE URGENCE - HOSTINGER RATE LIMIT 🚨\n";
 echo "========================================\n\n";
 
 // METS TES IDs ICI (maximum 5-10 à la fois)
-$participantIds = [/* IDs RESTANTS */];
+$participantIds = [59, 62, 63, 65, 66, 67]; // Exemples d'IDs
 
 if (empty($participantIds)) {
     echo "❌ Aucun ID fourni.\n";
