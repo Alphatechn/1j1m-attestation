@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'default' => env('QUEUE_CONNECTION', 'sync'),
+    'default' => env('QUEUE_CONNECTION', 'database'),
 
     /*
     |--------------------------------------------------------------------------
@@ -37,9 +37,17 @@ return [
         'database' => [
             'driver' => 'database',
             'table' => 'jobs',
-            'queue' => 'default',
-            'retry_after' => 90,
-            'after_commit' => false,
+            'queue' => 'default,emails,high,low',
+            'retry_after' => 120, // Augmenté à 120 secondes
+            'after_commit' => true, // Changé à true pour la cohérence
+        ],
+
+        'emails' => [
+            'driver' => 'database',
+            'table' => 'jobs',
+            'queue' => 'emails',
+            'retry_after' => 180, // Plus long pour les emails
+            'after_commit' => true,
         ],
 
         'beanstalkd' => [
@@ -71,6 +79,22 @@ return [
             'after_commit' => false,
         ],
 
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Job Batching
+    |--------------------------------------------------------------------------
+    |
+    | The following options configure the database and table that store job
+    | batching information. These options can be updated to any database
+    | connection and table which has been defined by your application.
+    |
+    */
+
+    'batching' => [
+        'database' => env('DB_CONNECTION', 'mysql'),
+        'table' => 'job_batches',
     ],
 
     /*
