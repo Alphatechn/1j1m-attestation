@@ -2,19 +2,23 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Attestation;
 use App\Models\Participant;
+use App\Models\Attestation;
 use App\Models\Periode;
-use App\Services\AttestationService;
 use App\Jobs\SendAttestationEmail;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use App\Services\AttestationService;
 
-
+/**
+ * ========================================
+ * AMÉLIORATION DU CONTROLLER ATTESTATION
+ * pour l'envoi massif via le frontend existant
+ * ========================================
+ */
 class AttestationController extends Controller
 {
     protected $attestationService;
@@ -23,7 +27,6 @@ class AttestationController extends Controller
     {
         $this->attestationService = $attestationService;
 
-        // Exclure toutes les méthodes publiques
         $this->middleware('auth')->except([
             'verify',
             'searchByNamePage',
@@ -35,63 +38,54 @@ class AttestationController extends Controller
         ]);
     }
 
-    // ==================== MÉTHODES PUBLIQUES ====================
+    // ==================== MÉTHODES PUBLIQUES (inchangées) ====================
 
-    /**
-     * Téléchargement PUBLIC
-     */
     public function publicDownload($id)
     {
         try {
             Log::info("Téléchargement public - ID: {$id}");
 
             $attestation = Attestation::with(['participant', 'periode'])
-                                    ->where('id', $id)
-                                    ->first();
+                ->where('id', $id)
+                ->first();
 
             if (!$attestation) {
-                Log::warning("Attestation non trouvée pour téléchargement public: {$id}");
+                Log::warning("Attestation non trouvée: {$id}");
                 abort(404, 'Attestation non trouvée');
             }
 
-            Log::info("Attestation publique trouvée: {$attestation->attestation_number}");
+            Log::info("Attestation trouvée: {$attestation->attestation_number}");
             return $this->attestationService->downloadPDF($attestation);
 
         } catch (\Exception $e) {
-            Log::error("Erreur téléchargement public: " . $e->getMessage());
+            Log::error("Erreur téléchargement: " . $e->getMessage());
             abort(500, 'Erreur lors du téléchargement');
         }
     }
 
-    /**
-     * Preview PUBLIC
-     */
     public function publicPreview($id)
     {
         try {
             Log::info("Preview public - ID: {$id}");
 
             $attestation = Attestation::with(['participant', 'periode'])
-                                    ->where('id', $id)
-                                    ->first();
+                ->where('id', $id)
+                ->first();
 
             if (!$attestation) {
-                Log::warning("Attestation non trouvée pour preview public: {$id}");
+                Log::warning("Attestation non trouvée: {$id}");
                 abort(404, 'Attestation non trouvée');
             }
 
-            Log::info("Attestation publique trouvée pour preview: {$attestation->attestation_number}");
+            Log::info("Attestation trouvée: {$attestation->attestation_number}");
             return $this->attestationService->displayPDF($attestation);
 
         } catch (\Exception $e) {
-            Log::error("Erreur preview public: " . $e->getMessage());
+            Log::error("Erreur preview: " . $e->getMessage());
             abort(500, 'Erreur lors de la visualisation');
         }
     }
 
-    /**
-     * Page de vérification publique (via QR Code)
-     */
     public function verify($token)
     {
         $attestation = $this->attestationService->viewAttestation($token, 'token');
@@ -111,20 +105,13 @@ class AttestationController extends Controller
         ]);
     }
 
-    /**
-     * RECHERCHE PAR NOM - Page
-     */
     public function searchByNamePage()
     {
         return view('Attestations.search-by-name');
     }
 
-    /**
-     * RECHERCHE PAR NOM - Traitement AJAX
-     */
     public function searchByName(Request $request)
     {
-        // Validation
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|min:2|max:255',
         ], [
@@ -141,9 +128,7 @@ class AttestationController extends Controller
         }
 
         try {
-            $attestations = $this->attestationService->searchByParticipantName(
-                $request->name
-            );
+            $attestations = $this->attestationService->searchByParticipantName($request->name);
 
             return response()->json([
                 'success' => true,
@@ -162,20 +147,13 @@ class AttestationController extends Controller
         }
     }
 
-    /**
-     * RECHERCHE PAR NUMERO - Page
-     */
     public function searchByNumberPage()
     {
         return view('Attestations.search-by-number');
     }
 
-    /**
-     * RECHERCHE PAR NUMERO - Traitement AJAX
-     */
     public function searchByNumber(Request $request)
     {
-        // Validation
         $validator = Validator::make($request->all(), [
             'attestation_number' => 'required|string|min:5|max:50',
         ], [
@@ -218,17 +196,13 @@ class AttestationController extends Controller
         }
     }
 
-    // ==================== MÉTHODES ADMIN (Protégées) ====================
+    // ==================== MÉTHODES ADMIN ====================
 
-    /**
-     * Liste des attestations
-     */
     public function index(Request $request)
     {
         if ($request->ajax()) {
             $query = Attestation::with(['participant', 'periode', 'generatedBy']);
 
-            // Filtres
             if ($request->filled('periode_id')) {
                 $query->where('periode_id', $request->periode_id);
             }
@@ -260,18 +234,19 @@ class AttestationController extends Controller
     }
 
     /**
-     * Créer une attestation
+     * ✅ AMÉLIORATION: Création individuelle OU en masse avec Queue
      */
     public function store(Request $request)
     {
         $request->validate([
             'participant_id' => 'required|exists:participants,id',
+            'use_queue' => 'nullable|boolean', // Nouveau paramètre
         ]);
 
         try {
             $participant = Participant::findOrFail($request->participant_id);
 
-            // ✅ Vérifier attestation existante AVANT toute action
+            // Vérifier attestation existante
             $existing = Attestation::where('participant_id', $participant->id)
                 ->where('periode_id', $participant->periode_id)
                 ->first();
@@ -284,41 +259,26 @@ class AttestationController extends Controller
                 ], 422);
             }
 
-            // ✅ Pas de transaction ici car le Service gère tout
-            Log::info("🔄 Création attestation pour: {$participant->email}");
+            // ✅ OPTION 1: Utiliser la Queue (pour envoi massif)
+            if ($request->input('use_queue', false)) {
+                return $this->storeWithQueue($participant);
+            }
 
-            $attestation = Attestation::create([
-                'participant_id' => $participant->id,
-                'periode_id' => $participant->periode_id,
-                'generated_by' => auth()->id(),
-                'issue_date' => Carbon::now(),
-                'status' => 'pending',
-                'content_text' => $this->attestationService->generateContentText($participant),
-            ]);
-
-            SendAttestationEmail::dispatch($attestation)->delay(now()->addSeconds(30));
-
-            Log::info("✅ Attestation créée: " . $attestation->attestation_number);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Attestation créée. L\'email sera envoyé dans 30 secondes.',
-                'attestation' => $attestation
-            ]);
+            // ✅ OPTION 2: Envoi immédiat (pour envoi unique)
+            return $this->storeImmediate($participant);
 
         } catch (\Exception $e) {
             Log::error("❌ Erreur création: " . $e->getMessage());
 
-            // ✅ Messages spécifiques selon le type d'erreur
             $message = $e->getMessage();
             $statusCode = 500;
 
             if (str_contains($message, 'attendre') || str_contains($message, 'Attendez')) {
-                $statusCode = 429; // Too Many Requests
+                $statusCode = 429;
             } elseif (str_contains($message, 'Hostinger a bloqué')) {
-                $statusCode = 503; // Service Unavailable
+                $statusCode = 503;
             } elseif (str_contains($message, 'Format d\'email invalide')) {
-                $statusCode = 422; // Unprocessable Entity
+                $statusCode = 422;
             }
 
             return response()->json([
@@ -330,13 +290,249 @@ class AttestationController extends Controller
     }
 
     /**
-     * Afficher une attestation
+     * ✅ NOUVEAU: Création avec Queue (pour envoi massif)
      */
+    private function storeWithQueue(Participant $participant)
+    {
+        // Créer l'attestation sans envoyer l'email immédiatement
+        $attestation = Attestation::create([
+            'participant_id' => $participant->id,
+            'periode_id' => $participant->periode_id,
+            'generated_by' => auth()->id(),
+            'issue_date' => now(),
+            'status' => 'pending',
+            'content_text' => $this->attestationService->generateContentText($participant),
+        ]);
+
+        // ✅ Planifier l'envoi dans la queue
+        SendAttestationEmail::dispatch($attestation)
+            ->onQueue('emails')
+            ->delay(now()->addSeconds(30));
+
+        Log::info("📦 Attestation créée et planifiée dans la queue: {$attestation->attestation_number}");
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Attestation créée et planifiée pour envoi.',
+            'attestation' => $attestation->load('participant'),
+            'queue_info' => [
+                'status' => 'L\'email sera envoyé dans 30+ secondes via la queue',
+                'queue' => 'emails'
+            ]
+        ]);
+    }
+
+    /**
+     * ✅ EXISTANT: Création avec envoi immédiat (pour envoi unique)
+     */
+    private function storeImmediate(Participant $participant)
+    {
+        Log::info("🔄 Création attestation avec envoi immédiat pour: {$participant->email}");
+
+        $attestation = $this->attestationService->createAttestation(
+            $participant,
+            auth()->id()
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Attestation créée et envoyée avec succès.',
+            'attestation' => $attestation->load('participant'),
+            'info' => [
+                'next_email_in' => '30+ secondes',
+                'hourly_limit' => '20 emails/heure'
+            ]
+        ]);
+    }
+
+    /**
+     * ✅ NOUVEAU: Endpoint pour envoi massif optimisé
+     */
+    public function bulkStore(Request $request)
+    {
+        $request->validate([
+            'periode_id' => 'required|exists:periodes,id',
+            'participant_ids' => 'nullable|array',
+            'participant_ids.*' => 'exists:participants,id',
+            'limit' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        try {
+            // ✅ Vérifier blocage Hostinger
+            $blockedUntil = Cache::get('hostinger_blocked_until', 0);
+            if ($blockedUntil > time()) {
+                $waitMinutes = ceil(($blockedUntil - time()) / 60);
+                return response()->json([
+                    'success' => false,
+                    'message' => "🚨 Hostinger a bloqué les envois. Attendez {$waitMinutes} minutes.",
+                    'type' => 'hostinger_blocked'
+                ], 503);
+            }
+
+            // ✅ Récupérer les participants
+            $query = Participant::whereDoesntHave('attestations')
+                ->whereNotNull('email')
+                ->where('periode_id', $request->periode_id);
+
+            // Si IDs spécifiques fournis
+            if ($request->filled('participant_ids')) {
+                $query->whereIn('id', $request->participant_ids);
+            }
+
+            // Limite
+            $limit = $request->input('limit', 20);
+            $participants = $query->limit($limit)->get();
+
+            if ($participants->isEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Aucun participant trouvé sans attestation.'
+                ], 404);
+            }
+
+            // ✅ Créer et planifier
+            $successCount = 0;
+            $errorCount = 0;
+            $errors = [];
+            $delaySeconds = 0;
+
+            DB::beginTransaction();
+
+            try {
+                foreach ($participants as $participant) {
+                    try {
+                        // Valider email
+                        if (!filter_var($participant->email, FILTER_VALIDATE_EMAIL)) {
+                            $errors[] = [
+                                'participant' => $participant->full_name,
+                                'error' => 'Format email invalide'
+                            ];
+                            $errorCount++;
+                            continue;
+                        }
+
+                        // Créer l'attestation
+                        $attestation = Attestation::create([
+                            'participant_id' => $participant->id,
+                            'periode_id' => $participant->periode_id,
+                            'generated_by' => auth()->id(),
+                            'issue_date' => now(),
+                            'status' => 'pending',
+                            'content_text' => $this->generateContentText($participant),
+                        ]);
+
+                        // Planifier dans la queue
+                        SendAttestationEmail::dispatch($attestation)
+                            ->onQueue('emails')
+                            ->delay(now()->addSeconds($delaySeconds));
+
+                        $successCount++;
+                        $delaySeconds += 30;
+
+                    } catch (\Exception $e) {
+                        $errors[] = [
+                            'participant' => $participant->full_name,
+                            'error' => $e->getMessage()
+                        ];
+                        $errorCount++;
+                        Log::error("Erreur création attestation: " . $e->getMessage());
+                    }
+                }
+
+                DB::commit();
+
+                Log::info("📊 Envoi massif planifié: {$successCount} succès, {$errorCount} erreurs");
+
+                return response()->json([
+                    'success' => true,
+                    'message' => "Envoi massif planifié avec succès !",
+                    'data' => [
+                        'success_count' => $successCount,
+                        'error_count' => $errorCount,
+                        'errors' => $errors,
+                        'estimated_duration' => gmdate('H:i:s', $delaySeconds),
+                        'estimated_completion' => now()->addSeconds($delaySeconds)->format('Y-m-d H:i:s'),
+                        'info' => [
+                            'delay_between_emails' => '30 secondes',
+                            'queue' => 'emails',
+                            'status' => 'Les emails seront envoyés progressivement'
+                        ]
+                    ]
+                ]);
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+        } catch (\Exception $e) {
+            Log::error("Erreur envoi massif: " . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de l\'envoi massif: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * ✅ NOUVEAU: Statut de la queue (pour monitoring)
+     */
+    public function queueStatus()
+    {
+        try {
+            $hourKey = 'email_count_hour_' . date('Y-m-d-H');
+            $emailsSent = Cache::get($hourKey, 0);
+            $lastSent = Cache::get('last_email_sent_timestamp', 0);
+            $blockedUntil = Cache::get('hostinger_blocked_until', 0);
+
+            $pendingJobs = DB::table('jobs')
+                ->where('queue', 'emails')
+                ->count();
+
+            $failedJobs = DB::table('failed_jobs')
+                ->where('queue', 'emails')
+                ->count();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'quota' => [
+                        'sent_this_hour' => $emailsSent,
+                        'max_per_hour' => 20,
+                        'remaining' => max(0, 20 - $emailsSent),
+                        'percentage' => ($emailsSent / 20) * 100,
+                    ],
+                    'timing' => [
+                        'last_email_ago_seconds' => $lastSent > 0 ? time() - $lastSent : null,
+                        'can_send_now' => $lastSent === 0 || (time() - $lastSent) >= 30,
+                    ],
+                    'hostinger' => [
+                        'blocked' => $blockedUntil > time(),
+                        'blocked_until' => $blockedUntil > time() ? date('H:i:s', $blockedUntil) : null,
+                    ],
+                    'queue' => [
+                        'pending_jobs' => $pendingJobs,
+                        'failed_jobs' => $failedJobs,
+                    ],
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // ==================== MÉTHODES EXISTANTES (inchangées) ====================
+
     public function show($id)
     {
         try {
             $attestation = Attestation::with(['participant', 'periode', 'generatedBy'])
-                                      ->findOrFail($id);
+                ->findOrFail($id);
 
             return response()->json([
                 'success' => true,
@@ -351,13 +547,9 @@ class AttestationController extends Controller
         }
     }
 
-    /**
-     * Envoyer l'attestation par email
-     */
-        public function sendEmail($id)
+    public function sendEmail($id)
     {
         try {
-            // ✅ Vérifier blocage Hostinger
             $blockedUntil = Cache::get('hostinger_blocked_until', 0);
             if ($blockedUntil > time()) {
                 $waitMinutes = ceil(($blockedUntil - time()) / 60);
@@ -376,7 +568,6 @@ class AttestationController extends Controller
                 ], 422);
             }
 
-            // ✅ Validation format email
             if (!filter_var($attestation->participant->email, FILTER_VALIDATE_EMAIL)) {
                 return response()->json([
                     'success' => false,
@@ -399,9 +590,6 @@ class AttestationController extends Controller
         }
     }
 
-    /**
-     * Télécharger le PDF (ADMIN)
-     */
     public function download($id)
     {
         try {
@@ -413,9 +601,6 @@ class AttestationController extends Controller
         }
     }
 
-    /**
-     * Visualiser le PDF dans le navigateur (ADMIN)
-     */
     public function preview($id)
     {
         try {
@@ -427,9 +612,6 @@ class AttestationController extends Controller
         }
     }
 
-    /**
-     * Supprimer une attestation
-     */
     public function destroy($id)
     {
         try {
@@ -449,10 +631,7 @@ class AttestationController extends Controller
         }
     }
 
-    /**
-     * Statistiques
-     */
-        public function stats(Request $request)
+    public function stats(Request $request)
     {
         $hourKey = 'email_count_hour_' . date('Y-m-d-H');
         $emailsSentThisHour = Cache::get($hourKey, 0);
@@ -467,7 +646,6 @@ class AttestationController extends Controller
             'total_views' => Attestation::sum('view_count'),
             'this_month' => Attestation::whereMonth('created_at', now()->month)->count(),
 
-            // ✅ Infos quota
             'quota' => [
                 'emails_sent_this_hour' => $emailsSentThisHour,
                 'max_per_hour' => 20,
@@ -483,5 +661,17 @@ class AttestationController extends Controller
             'success' => true,
             'data' => $stats
         ]);
+    }
+
+    /**
+     * Générer le contenu texte
+     */
+    private function generateContentText(Participant $participant): string
+    {
+        $periode = $participant->periode;
+        return "Je soussigné(e), certifie que {$participant->full_name} " .
+               "a participé à la formation/session organisée durant la période " .
+               "{$periode->full_libelle}. Cette attestation est délivrée pour servir " .
+               "et valoir ce que de droit.";
     }
 }

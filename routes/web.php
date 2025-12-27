@@ -150,6 +150,9 @@ Route::middleware(['auth'])->group(function () {
 
         // Statistiques
         Route::get('/stats/global', [AttestationController::class, 'stats'])->name('stats');
+
+        Route::post('/bulk', [AttestationController::class, 'bulkStore']);
+        Route::get('/queue/status', [AttestationController::class, 'queueStatus']);
     });
 });
 

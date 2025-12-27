@@ -317,6 +317,9 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="col-12 mb-4">
+                            <div id="queueStatusContainer"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -333,6 +336,9 @@
                                 </button>
                                 <button class="btn btn-light btn-sm me-2" data-bs-toggle="modal" data-bs-target="#bulkGenerateModal">
                                     <i class="bi bi-gear"></i> Génération en Masse
+                                </button>
+                                <button class="btn btn-info btn-sm" onclick="showPendingJobs()">
+                                    <i class="bi bi-list-check"></i> Voir la Queue
                                 </button>
                             </div>
                         </div>
@@ -669,7 +675,7 @@ $(document).ready(function() {
         });
     });
 
-    $('#confirmBulkGenerateBtn').on('click', function() {
+    $('#confirmBulkGenerateBtn').off('click').on('click', function() {
         const periodeId = $('#bulk_periode_id').val();
         const sendEmails = $('#send_emails').is(':checked');
 
@@ -678,121 +684,249 @@ $(document).ready(function() {
             return;
         }
 
-        showSpinner();
+        // Confirmer avec l'utilisateur
+        Swal.fire({
+            title: 'Confirmer l\'envoi massif',
+            html: `
+                <p>Vous allez générer des attestations en masse.</p>
+                <p class="text-info">
+                    <i class="bi bi-info-circle"></i>
+                    Les attestations seront créées immédiatement,
+                    mais les emails seront envoyés progressivement (30s entre chaque)
+                </p>
+                <p class="text-warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    Limite: 20 emails/heure maximum
+                </p>
+            `,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Oui, continuer',
+            cancelButtonText: 'Annuler'
+        }).then((result) => {
+        if (result.isConfirmed) {
+            showSpinner();
 
-        // Récupérer les participants sans attestation
-        $.ajax({
-            url: `/participants/without-attestation/list?periode_id=${periodeId}`,
-            method: 'GET',
-            success: function(response) {
-                if (response.success && response.data.data && response.data.data.length > 0) {
-                    startBulkGeneration(response.data.data, sendEmails);
-                } else {
-                    hideSpinner();
-                    showToast('Aucun participant sans attestation trouvé pour cette période', 'warning');
-                }
-            },
-            error: function(xhr) {
-                hideSpinner();
-                showToast('Erreur lors de la récupération des participants', 'error');
+                // Récupérer les participants
+                $.ajax({
+                    url: `/participants/without-attestation/list?periode_id=${periodeId}`,
+                    method: 'GET',
+                    success: function(response) {
+                        if (response.success && response.data.data && response.data.data.length > 0) {
+                            startBulkGenerationWithQueue(response.data.data, sendEmails);
+                        } else {
+                            hideSpinner();
+                            showToast('Aucun participant sans attestation trouvé', 'warning');
+                        }
+                    },
+                    error: function(xhr) {
+                        hideSpinner();
+                        showToast('Erreur lors de la récupération des participants', 'error');
+                    }
+                });
             }
         });
     });
 
-    function startBulkGeneration(participants, sendEmails) {
-        let processed = 0;
-        let successCount = 0;
-        let errorCount = 0;
-        const total = participants.length;
+    function startBulkGenerationWithQueue(participants, sendEmails) {
+        // Diviser en lots de 20 pour respecter la limite horaire
+        const batchSize = 20;
+        const batches = [];
 
-        // Fonction récursive pour traiter les participants un par un
-        function processNext() {
-            if (processed >= total) {
+        for (let i = 0; i < participants.length; i += batchSize) {
+            batches.push(participants.slice(i, i + batchSize));
+        }
+
+        let currentBatch = 0;
+        let totalProcessed = 0;
+        let totalSuccess = 0;
+        let totalErrors = 0;
+
+        function processBatch() {
+            if (currentBatch >= batches.length) {
+                // Tous les lots traités
                 hideSpinner();
                 $('#bulkGenerateModal').modal('hide');
 
-                let message = `Génération terminée: ${successCount} attestation(s) créée(s)`;
-                if (errorCount > 0) {
-                    message += `, ${errorCount} erreur(s)`;
-                }
-
                 Swal.fire({
-                    icon: errorCount > 0 ? 'warning' : 'success',
+                    icon: totalErrors > 0 ? 'warning' : 'success',
                     title: 'Génération en masse terminée',
                     html: `
-                        <p>${message}</p>
-                        <div class="progress mt-3">
-                            <div class="progress-bar bg-success" style="width: ${(successCount/total)*100}%"></div>
-                            <div class="progress-bar bg-danger" style="width: ${(errorCount/total)*100}%"></div>
-                        </div>
+                        <p><strong>${totalSuccess}</strong> attestation(s) créée(s) et planifiée(s)</p>
+                        ${totalErrors > 0 ? `<p class="text-danger">${totalErrors} erreur(s)</p>` : ''}
+                        <p class="text-muted">Les emails seront envoyés progressivement (30s entre chaque)</p>
+                        <p class="text-info">Surveillez l'onglet "Statut de la Queue" pour suivre la progression</p>
                     `,
                     confirmButtonText: 'OK'
                 });
 
-                // Recharger le tableau
                 dataTable.ajax.reload();
                 loadStats();
+                loadQueueStatus(); // Charger le statut de la queue
                 return;
             }
 
-            const participant = participants[processed];
-            processed++;
+            const batch = batches[currentBatch];
+            currentBatch++;
 
-            // Mettre à jour la progression
-            updateProgress(processed, total, successCount, errorCount);
+            // Afficher la progression
+            updateBulkProgress(totalProcessed, participants.length, totalSuccess, totalErrors, currentBatch, batches.length);
 
-            // Créer l'attestation
+            // Envoyer le lot via l'endpoint bulk
             $.ajax({
-                url: '/attestations',
+                url: '/attestations/bulk',
                 method: 'POST',
                 data: {
-                    participant_id: participant.id
+                    periode_id: $('#bulk_periode_id').val(),
+                    participant_ids: batch.map(p => p.id),
+                    limit: batch.length
                 },
                 success: function(response) {
                     if (response.success) {
-                        successCount++;
+                        totalSuccess += response.data.success_count;
+                        totalErrors += response.data.error_count;
+                        totalProcessed += batch.length;
 
-                        // Si l'envoi par email est activé
-                        if (sendEmails && participant.email) {
-                            sendAttestationEmail(response.data.id);
-                        }
+                        // Passer au lot suivant après 1 seconde
+                        setTimeout(processBatch, 1000);
                     } else {
-                        errorCount++;
+                        totalErrors += batch.length;
+                        totalProcessed += batch.length;
+                        setTimeout(processBatch, 1000);
                     }
-
-                    processNext();
                 },
                 error: function(xhr) {
-                    errorCount++;
-                    processNext();
+                    console.error('Erreur lot:', xhr);
+
+                    // Si Hostinger bloqué, arrêter
+                    if (xhr.status === 503) {
+                        hideSpinner();
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Hostinger a bloqué les envois',
+                            text: xhr.responseJSON?.message || 'Veuillez attendre avant de réessayer',
+                            confirmButtonText: 'OK'
+                        });
+                        return;
+                    }
+
+                    totalErrors += batch.length;
+                    totalProcessed += batch.length;
+                    setTimeout(processBatch, 1000);
                 }
             });
         }
 
-        function updateProgress(current, total, success, error) {
-            const percent = (current / total) * 100;
+        function updateBulkProgress(processed, total, success, errors, currentBatch, totalBatches) {
+            const percent = (processed / total) * 100;
             $('#spinnerModal .modal-body').html(`
                 <div class="text-center">
-                    <div class="spinner-border text-light mb-3" role="status">
+                    <div class="spinner-border text-light mb-3" style="width: 3rem; height: 3rem;" role="status">
                         <span class="visually-hidden">Chargement...</span>
                     </div>
-                    <p class="text-light mb-2">Génération en cours...</p>
-                    <div class="progress mb-2">
-                        <div class="progress-bar bg-success" style="width: ${(success/total)*100}%"></div>
-                        <div class="progress-bar bg-danger" style="width: ${(error/total)*100}%"></div>
-                        <div class="progress-bar bg-secondary" style="width: ${((current - success - error)/total)*100}%"></div>
+                    <h5 class="text-light mb-3">Génération en masse (avec Queue)</h5>
+                    <p class="text-light mb-2">Lot ${currentBatch}/${totalBatches}</p>
+                    <div class="progress mb-3" style="height: 25px;">
+                        <div class="progress-bar bg-success" style="width: ${(success/total)*100}%">
+                            ${success}
+                        </div>
+                        <div class="progress-bar bg-danger" style="width: ${(errors/total)*100}%">
+                            ${errors}
+                        </div>
+                        <div class="progress-bar bg-secondary" style="width: ${((processed - success - errors)/total)*100}%">
+                        </div>
                     </div>
                     <small class="text-light">
-                        ${current}/${total} participants traités -
-                        ${success} succès - ${error} erreurs
+                        ${processed}/${total} participants traités<br>
+                        ✅ ${success} succès • ❌ ${errors} erreurs
                     </small>
+                    <p class="text-light mt-3">
+                        <i class="bi bi-info-circle"></i> Les emails seront envoyés dans la queue
+                    </p>
                 </div>
             `);
         }
 
-        // Démarrer le traitement
-        processNext();
+        // Démarrer le premier lot
+        processBatch();
     }
+
+    // ✅ NOUVEAU: Fonction pour charger le statut de la queue
+    function loadQueueStatus() {
+        $.ajax({
+            url: '/attestations/queue/status',
+            method: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    const data = response.data;
+
+                    // Afficher dans un badge ou une alerte
+                    const quota = data.quota;
+                    const queue = data.queue;
+
+                    let html = `
+                        <div class="alert alert-info mt-3">
+                            <h6><i class="bi bi-info-circle"></i> Statut de la Queue</h6>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <strong>Quota:</strong> ${quota.sent_this_hour}/${quota.max_per_hour}<br>
+                                    <small>${quota.remaining} restants</small>
+                                </div>
+                                <div class="col-md-4">
+                                    <strong>Queue:</strong> ${queue.pending_jobs} en attente<br>
+                                    <small>${queue.failed_jobs} échecs</small>
+                                </div>
+                                <div class="col-md-4">
+                                    ${data.hostinger.blocked
+                                        ? '<span class="badge bg-danger">Hostinger Bloqué</span>'
+                                        : '<span class="badge bg-success">OK</span>'}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+
+                    // Ajouter après les statistiques
+                    $('#queueStatusContainer').html(html);
+                }
+            },
+            error: function(xhr) {
+                console.error('Erreur chargement queue status:', xhr);
+            }
+        });
+    }
+
+    // ✅ Charger le statut de la queue toutes les 10 secondes
+    setInterval(loadQueueStatus, 10000);
+    loadQueueStatus(); // Premier chargement
+
+    // ✅ NOUVEAU: Bouton pour voir les jobs en attente
+    function showPendingJobs() {
+        $.ajax({
+            url: '/attestations/queue/status',
+            method: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    const queue = response.data.queue;
+
+                    Swal.fire({
+                        title: 'File d\'Attente',
+                        html: `
+                            <div class="text-start">
+                                <p><strong>Jobs en attente:</strong> ${queue.pending_jobs}</p>
+                                <p><strong>Jobs échoués:</strong> ${queue.failed_jobs}</p>
+                                ${queue.pending_jobs > 0
+                                    ? '<p class="text-info">Les emails sont en cours d\'envoi progressif</p>'
+                                    : '<p class="text-success">Aucun email en attente</p>'}
+                            </div>
+                        `,
+                        icon: 'info',
+                        confirmButtonText: 'OK'
+                    });
+                }
+            }
+        });
+    }
+
 
     function sendAttestationEmail(attestationId) {
         $.ajax({
