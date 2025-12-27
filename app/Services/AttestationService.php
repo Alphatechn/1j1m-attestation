@@ -189,7 +189,7 @@ class AttestationService
     /**
      * Générer le contenu texte de l'attestation
      */
-    protected function generateContentText(Participant $participant)
+    public function generateContentText(Participant $participant)
     {
         $periode = $participant->periode;
 

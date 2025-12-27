@@ -6,11 +6,13 @@ use App\Models\Attestation;
 use App\Models\Participant;
 use App\Models\Periode;
 use App\Services\AttestationService;
+use App\Jobs\SendAttestationEmail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 
 class AttestationController extends Controller
@@ -285,21 +287,23 @@ class AttestationController extends Controller
             // ✅ Pas de transaction ici car le Service gère tout
             Log::info("🔄 Création attestation pour: {$participant->email}");
 
-            $attestation = $this->attestationService->createAttestation(
-                $participant,
-                auth()->id()
-            );
+            $attestation = Attestation::create([
+                'participant_id' => $participant->id,
+                'periode_id' => $participant->periode_id,
+                'generated_by' => auth()->id(),
+                'issue_date' => Carbon::now(),
+                'status' => 'pending',
+                'content_text' => $this->attestationService->generateContentText($participant),
+            ]);
+
+            SendAttestationEmail::dispatch($attestation)->delay(now()->addSeconds(30));
 
             Log::info("✅ Attestation créée: " . $attestation->attestation_number);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Attestation créée et envoyée avec succès.',
-                'attestation' => $attestation,
-                'info' => [
-                    'next_email_in' => '30+ secondes',
-                    'hourly_limit' => '20 emails/heure'
-                ]
+                'message' => 'Attestation créée. L\'email sera envoyé dans 30 secondes.',
+                'attestation' => $attestation
             ]);
 
         } catch (\Exception $e) {
