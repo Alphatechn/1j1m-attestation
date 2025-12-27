@@ -291,7 +291,7 @@ class AttestationService
         $fontStyle = 'B';
         $initialFontSize = 36;
 
-        $participantName = $participant->full_name;
+        $participantName = mb_strtoupper($participant->full_name, 'UTF-8');
         $fontSize = $initialFontSize;
 
         // Boucle pour réduire la police si le texte est trop large
