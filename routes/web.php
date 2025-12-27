@@ -7,6 +7,7 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\PeriodeController;
 use App\Http\Controllers\ParticipantController;
 use App\Http\Controllers\AttestationController;
+use App\Http\Controllers\BulkAttestationController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Maatwebsite\Excel\Facades\Excel;
@@ -178,4 +179,32 @@ Route::get('/email-status', function() {
         ],
         'recommandation' => $count >= 25 ? '🚨 PRESQUE LIMITE - Attendez avant plus d\'envois' : '✅ OK pour envoyer'
     ]);
+});
+
+
+Route::middleware('auth')->group(function () {
+
+    // Page d'envoi massif
+    Route::get('/attestations/bulk', [BulkAttestationController::class, 'index'])
+        ->name('attestations.bulk.index');
+
+    // Prévisualiser avant envoi
+    Route::post('/attestations/bulk/preview', [BulkAttestationController::class, 'preview'])
+        ->name('attestations.bulk.preview');
+
+    // Envoyer en masse
+    Route::post('/attestations/bulk/send', [BulkAttestationController::class, 'send'])
+        ->name('attestations.bulk.send');
+
+    // Statut de l'envoi massif
+    Route::get('/attestations/bulk/status', [BulkAttestationController::class, 'status'])
+        ->name('attestations.bulk.status');
+
+    // Annuler les envois en attente
+    Route::post('/attestations/bulk/cancel', [BulkAttestationController::class, 'cancel'])
+        ->name('attestations.bulk.cancel');
+
+    // Réessayer les échecs
+    Route::post('/attestations/bulk/retry', [BulkAttestationController::class, 'retry'])
+        ->name('attestations.bulk.retry');
 });

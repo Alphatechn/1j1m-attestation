@@ -54,6 +54,11 @@
                     </a>
                 </li>
                 <li class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('attestations.bulk.index') ? 'active' : '' }}" href="{{ route('attestations.bulk.index') }}">
+                        <i class="fas fa-paper-plane"></i> Envoi Massif
+                    </a>
+                </li>
+                <li class="nav-item">
                     <a href="{{ route('users.profile') }}" class="nav-link {{ request()->routeIs('users.profile') ? 'active' : '' }}">
                         <!-- Profile -->
                         <i class="nav-icon bi bi-person"></i>
