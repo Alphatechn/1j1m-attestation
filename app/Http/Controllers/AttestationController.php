@@ -290,6 +290,8 @@ class AttestationController extends Controller
                 auth()->id()
             );
 
+            Log::info("✅ Attestation créée: " . $attestation->attestation_number);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Attestation créée et envoyée avec succès.',
