@@ -21,12 +21,16 @@ class SendAttestationEmail implements ShouldQueue
     public $timeout = 120;
     public $maxExceptions = 2;
 
+    // ✅ CONSTANTES
+    const MIN_DELAY_SECONDS = 35; // Délai minimum entre emails
+    const MAX_EMAILS_PER_HOUR = 20;
+    const GLOBAL_LOCK_SECONDS = 40; // Lock global pour garantir l'espacement
+
     /**
      * The number of seconds to wait before retrying the job.
      */
     public function backoff()
     {
-        // Backoff exponentiel: 30s, 60s, 120s
         return [30, 60, 120];
     }
 
@@ -38,8 +42,7 @@ class SendAttestationEmail implements ShouldQueue
         $this->attestation = $attestation;
         $this->onQueue('emails');
 
-        // ✅ FORCER un délai minimum de 35 secondes entre chaque job
-        $this->delay = now()->addSeconds(35);
+        // ⚠️ IMPORTANT: Ne PAS définir delay ici, on le gère dans handle()
     }
 
     /**
@@ -47,98 +50,188 @@ class SendAttestationEmail implements ShouldQueue
      */
     public function handle(AttestationService $attestationService)
     {
-        // ✅ Vérifier si déjà envoyé
+        // ✅ 1. Vérifier si déjà envoyé
         if ($this->attestation->email_status === 'sent') {
             Log::info("📧 [JOB] Email déjà envoyé: {$this->attestation->attestation_number}");
             return;
         }
 
-        // ✅ Vérifier blocage Hostinger
-        $blockedUntil = Cache::get('hostinger_blocked_until', 0);
-        if ($blockedUntil > time()) {
-            $waitTime = $blockedUntil - time() + 5;
-            Log::warning("🚫 Job en attente: Hostinger bloqué pour {$waitTime}s");
-            $this->release($waitTime);
+        // ✅ 2. Vérifier blocage Hostinger
+        if (!$this->checkHostingerStatus()) {
             return;
         }
 
-        // ✅ Vérifier quota horaire (20 emails/heure)
-        $hourKey = 'email_count_hour_' . date('Y-m-d-H');
-        $currentCount = Cache::get($hourKey, 0);
-
-        if ($currentCount >= 20) {
-            Log::warning("🚫 Quota horaire atteint: {$currentCount}/20");
-            $this->release(300); // Réessayer dans 5 minutes
+        // ✅ 3. Vérifier quota horaire
+        if (!$this->checkHourlyQuota()) {
             return;
         }
 
-        // ✅ Vérifier délai minimum entre envois (35 secondes)
-        $lastSent = Cache::get('last_email_sent_timestamp', 0);
-        $elapsed = time() - $lastSent;
+        // ✅ 4. LOCK GLOBAL pour garantir l'espacement (UN SEUL EMAIL À LA FOIS)
+        $globalLock = Cache::lock('email_global_send_lock', self::GLOBAL_LOCK_SECONDS);
 
-        if ($lastSent > 0 && $elapsed < 35) {
-            $waitTime = 35 - $elapsed;
-            Log::info("⏳ Attente: {$waitTime}s avant envoi (dernier: {$elapsed}s)");
-            $this->release($waitTime);
-            return;
-        }
-
-        // ✅ LOCK pour éviter les envois concurrents
-        $lockKey = 'email_send_lock_' . $this->attestation->id;
-        $lock = Cache::lock($lockKey, 15);
-
-        if (!$lock->get()) {
-            Log::warning("🔒 Job en attente: Lock actif pour attestation");
+        if (!$globalLock->get()) {
+            // Un autre job est en cours, attendre 5 secondes
+            Log::info("🔒 [JOB] Lock global actif, réessai dans 5s: {$this->attestation->attestation_number}");
             $this->release(5);
             return;
         }
 
         try {
-            Log::info("🚀 [JOB] Début envoi: {$this->attestation->attestation_number}");
+            // ✅ 5. Vérifier ET ATTENDRE le délai minimum
+            $this->enforceMinimumDelay();
 
-            // ✅ ENVOYER L'EMAIL
-            $attestationService->sendAttestationByEmail($this->attestation);
+            // ✅ 6. Lock spécifique à cette attestation
+            $attestationLock = Cache::lock('email_lock_' . $this->attestation->id, 120);
 
-            // ✅ Mettre à jour les compteurs APRÈS succès
-            Cache::put('last_email_sent_timestamp', time(), 60);
-            Cache::increment($hourKey, 1, now()->addHour());
-
-            // ✅ Mettre à jour le statut
-            $this->attestation->update([
-                'email_status' => 'sent',
-                'sent_at' => now(),
-                'email_error' => null
-            ]);
-
-            Log::info("✅ [JOB] Email envoyé avec succès: {$this->attestation->attestation_number}");
-
-        } catch (\Exception $e) {
-            Log::error("❌ [JOB] Erreur: " . $e->getMessage());
-
-            // Détecter rate limit
-            if (str_contains($e->getMessage(), '451') ||
-                str_contains($e->getMessage(), 'rate limit') ||
-                str_contains($e->getMessage(), 'too many requests')) {
-
-                Log::critical("🚨 RATE LIMIT HOSTINGER DÉTECTÉ");
-                Cache::put('hostinger_blocked_until', time() + 3600, 3700);
-
-                // Mettre à jour le statut
-                $this->attestation->update([
-                    'email_status' => 'failed',
-                    'email_error' => 'Rate limit Hostinger'
-                ]);
-
-                $this->release(3600);
-            } else {
-                // Réessayer avec backoff
-                $this->release($this->backoff()[$this->attempts() - 1] ?? 60);
+            if (!$attestationLock->get()) {
+                Log::warning("🔒 [JOB] Lock attestation actif");
+                $this->release(10);
+                return;
             }
 
-            throw $e;
+            try {
+                Log::info("🚀 [JOB] Début envoi: {$this->attestation->attestation_number}");
+
+                // ✅ 7. ENVOYER L'EMAIL
+                $attestationService->sendAttestationByEmail($this->attestation);
+
+                // ✅ 8. Mettre à jour les compteurs APRÈS succès
+                $this->updateCountersAfterSuccess();
+
+                // ✅ 9. Mettre à jour le statut
+                $this->attestation->update([
+                    'email_status' => 'sent',
+                    'status' => 'sent',
+                    'sent_at' => now(),
+                    'email_error' => null
+                ]);
+
+                Log::info("✅ [JOB] Email envoyé avec succès: {$this->attestation->attestation_number}");
+
+            } finally {
+                $attestationLock->release();
+            }
+
+        } catch (\Exception $e) {
+            $this->handleSendingError($e);
         } finally {
-            $lock->release();
+            $globalLock->release();
         }
+    }
+
+    /**
+     * ✅ Vérifier le statut Hostinger
+     */
+    private function checkHostingerStatus(): bool
+    {
+        $blockedUntil = Cache::get('hostinger_blocked_until', 0);
+
+        if ($blockedUntil > time()) {
+            $waitTime = $blockedUntil - time() + 5;
+            Log::warning("🚫 [JOB] Hostinger bloqué pour {$waitTime}s");
+            $this->release($waitTime);
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * ✅ Vérifier le quota horaire
+     */
+    private function checkHourlyQuota(): bool
+    {
+        $hourKey = 'email_count_hour_' . date('Y-m-d-H');
+        $currentCount = Cache::get($hourKey, 0);
+
+        if ($currentCount >= self::MAX_EMAILS_PER_HOUR) {
+            Log::warning("🚫 [JOB] Quota horaire atteint: {$currentCount}/" . self::MAX_EMAILS_PER_HOUR);
+
+            // Calculer le temps restant dans l'heure
+            $minutesLeft = 60 - (int)date('i');
+            $waitTime = $minutesLeft * 60;
+
+            $this->release($waitTime);
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * ✅ Garantir le délai minimum entre envois (AVEC ATTENTE RÉELLE)
+     */
+    private function enforceMinimumDelay(): void
+    {
+        $lastSent = Cache::get('last_email_sent_timestamp', 0);
+
+        if ($lastSent > 0) {
+            $elapsed = time() - $lastSent;
+            $requiredWait = self::MIN_DELAY_SECONDS - $elapsed;
+
+            if ($requiredWait > 0) {
+                Log::info("⏳ [JOB] Attente de {$requiredWait}s avant envoi (dernier: il y a {$elapsed}s)");
+
+                // ✅ ATTENDRE RÉELLEMENT (sleep bloquant)
+                sleep($requiredWait);
+
+                Log::info("✅ [JOB] Attente terminée, envoi maintenant");
+            }
+        }
+    }
+
+    /**
+     * ✅ Mettre à jour les compteurs après succès
+     */
+    private function updateCountersAfterSuccess(): void
+    {
+        $hourKey = 'email_count_hour_' . date('Y-m-d-H');
+
+        // Incrémenter le compteur horaire
+        Cache::increment($hourKey, 1);
+        Cache::put($hourKey, Cache::get($hourKey, 0), 3600);
+
+        // Enregistrer le timestamp
+        Cache::put('last_email_sent_timestamp', time(), 300);
+
+        $newCount = Cache::get($hourKey, 0);
+        Log::info("📊 [JOB] Email #{$newCount}/" . self::MAX_EMAILS_PER_HOUR . " envoyé cette heure");
+    }
+
+    /**
+     * ✅ Gérer les erreurs d'envoi
+     */
+    private function handleSendingError(\Exception $e): void
+    {
+        Log::error("❌ [JOB] Erreur: " . $e->getMessage());
+
+        // Détecter rate limit Hostinger
+        if (str_contains($e->getMessage(), '451') ||
+            str_contains($e->getMessage(), 'rate limit') ||
+            str_contains($e->getMessage(), 'too many') ||
+            str_contains($e->getMessage(), '421')) {
+
+            Log::critical("🚨 [JOB] RATE LIMIT HOSTINGER DÉTECTÉ");
+            Cache::put('hostinger_blocked_until', time() + 3600, 3700);
+
+            $this->attestation->update([
+                'email_status' => 'failed',
+                'email_error' => 'Rate limit Hostinger - Réessai dans 1h'
+            ]);
+
+            $this->release(3600);
+        } else {
+            // Réessayer avec backoff
+            $attemptNumber = $this->attempts();
+            $backoffTimes = $this->backoff();
+            $waitTime = $backoffTimes[$attemptNumber - 1] ?? 60;
+
+            Log::warning("⚠️ [JOB] Réessai dans {$waitTime}s (tentative {$attemptNumber}/{$this->tries})");
+
+            $this->release($waitTime);
+        }
+
+        throw $e;
     }
 
     /**
@@ -147,10 +240,22 @@ class SendAttestationEmail implements ShouldQueue
     public function failed(\Throwable $exception)
     {
         Log::error("💥 [JOB] Échec définitif: {$this->attestation->attestation_number}");
+        Log::error("💥 [JOB] Erreur: " . $exception->getMessage());
 
         $this->attestation->update([
             'email_status' => 'failed',
+            'status' => 'failed',
             'email_error' => substr($exception->getMessage(), 0, 200)
         ]);
+    }
+
+    /**
+     * ✅ Calculer le délai avant l'exécution du job
+     */
+    public static function calculateDelay(int $position): int
+    {
+        // Premier job : délai de 0
+        // Jobs suivants : 35 secondes * position
+        return $position * self::MIN_DELAY_SECONDS;
     }
 }

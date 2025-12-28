@@ -13,12 +13,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use App\Services\AttestationService;
 
-/**
- * ========================================
- * AMÉLIORATION DU CONTROLLER ATTESTATION
- * pour l'envoi massif via le frontend existant
- * ========================================
- */
 class AttestationController extends Controller
 {
     protected $attestationService;
@@ -38,7 +32,7 @@ class AttestationController extends Controller
         ]);
     }
 
-    // ==================== MÉTHODES PUBLIQUES (inchangées) ====================
+    // ==================== MÉTHODES PUBLIQUES ====================
 
     public function publicDownload($id)
     {
@@ -234,13 +228,13 @@ class AttestationController extends Controller
     }
 
     /**
-     * ✅ AMÉLIORATION: Création individuelle OU en masse avec Queue
+     * ✅ Création individuelle OU en masse avec Queue
      */
     public function store(Request $request)
     {
         $request->validate([
             'participant_id' => 'required|exists:participants,id',
-            'use_queue' => 'nullable|boolean', // Nouveau paramètre
+            'use_queue' => 'nullable|boolean',
         ]);
 
         try {
@@ -290,11 +284,11 @@ class AttestationController extends Controller
     }
 
     /**
-     * ✅ NOUVEAU: Création avec Queue (pour envoi massif)
+     * ✅ Création avec Queue
      */
     private function storeWithQueue(Participant $participant)
     {
-        // Créer l'attestation sans envoyer l'email immédiatement
+        // Créer l'attestation
         $attestation = Attestation::create([
             'participant_id' => $participant->id,
             'periode_id' => $participant->periode_id,
@@ -304,26 +298,25 @@ class AttestationController extends Controller
             'content_text' => $this->attestationService->generateContentText($participant),
         ]);
 
-        // ✅ Planifier l'envoi dans la queue
+        // ✅ Planifier IMMÉDIATEMENT (le job gérera le délai en interne)
         SendAttestationEmail::dispatch($attestation)
-            ->onQueue('emails')
-            ->delay(now()->addSeconds(30));
+            ->onQueue('emails');
 
-        Log::info("📦 Attestation créée et planifiée dans la queue: {$attestation->attestation_number}");
+        Log::info("📦 Attestation créée et planifiée: {$attestation->attestation_number}");
 
         return response()->json([
             'success' => true,
             'message' => 'Attestation créée et planifiée pour envoi.',
             'attestation' => $attestation->load('participant'),
             'queue_info' => [
-                'status' => 'L\'email sera envoyé dans 30+ secondes via la queue',
+                'status' => 'Le job gérera automatiquement les délais entre envois',
                 'queue' => 'emails'
             ]
         ]);
     }
 
     /**
-     * ✅ EXISTANT: Création avec envoi immédiat (pour envoi unique)
+     * ✅ Création avec envoi immédiat
      */
     private function storeImmediate(Participant $participant)
     {
@@ -346,7 +339,7 @@ class AttestationController extends Controller
     }
 
     /**
-     * ✅ NOUVEAU: Endpoint pour envoi massif optimisé
+     * ✅ AMÉLIORATION: Envoi massif avec délais CALCULÉS
      */
     public function bulkStore(Request $request)
     {
@@ -358,7 +351,7 @@ class AttestationController extends Controller
         ]);
 
         try {
-            // ✅ Vérifier blocage Hostinger
+            // Vérifier blocage Hostinger
             $blockedUntil = Cache::get('hostinger_blocked_until', 0);
             if ($blockedUntil > time()) {
                 $waitMinutes = ceil(($blockedUntil - time()) / 60);
@@ -369,17 +362,15 @@ class AttestationController extends Controller
                 ], 503);
             }
 
-            // ✅ Récupérer les participants
+            // Récupérer les participants
             $query = Participant::whereDoesntHave('attestations')
                 ->whereNotNull('email')
                 ->where('periode_id', $request->periode_id);
 
-            // Si IDs spécifiques fournis
             if ($request->filled('participant_ids')) {
                 $query->whereIn('id', $request->participant_ids);
             }
 
-            // Limite
             $limit = $request->input('limit', 20);
             $participants = $query->limit($limit)->get();
 
@@ -390,11 +381,11 @@ class AttestationController extends Controller
                 ], 404);
             }
 
-            // ✅ Créer et planifier
+            // ✅ Créer et planifier avec délais CALCULÉS
             $successCount = 0;
             $errorCount = 0;
             $errors = [];
-            $delaySeconds = 0;
+            $position = 0; // Position dans la queue
 
             DB::beginTransaction();
 
@@ -421,13 +412,18 @@ class AttestationController extends Controller
                             'content_text' => $this->generateContentText($participant),
                         ]);
 
-                        // Planifier dans la queue
+                        // ✅ CALCULER le délai progressif
+                        $delaySeconds = SendAttestationEmail::calculateDelay($position);
+
+                        // ✅ Planifier avec délai calculé
                         SendAttestationEmail::dispatch($attestation)
                             ->onQueue('emails')
                             ->delay(now()->addSeconds($delaySeconds));
 
+                        Log::info("📦 Job #{$position} planifié pour dans {$delaySeconds}s: {$attestation->attestation_number}");
+
                         $successCount++;
-                        $delaySeconds += 30;
+                        $position++;
 
                     } catch (\Exception $e) {
                         $errors[] = [
@@ -441,7 +437,10 @@ class AttestationController extends Controller
 
                 DB::commit();
 
-                Log::info("📊 Envoi massif planifié: {$successCount} succès, {$errorCount} erreurs");
+                $totalDurationSeconds = ($position - 1) * 35; // 35 secondes entre chaque
+                $estimatedCompletion = now()->addSeconds($totalDurationSeconds);
+
+                Log::info("📊 Envoi massif planifié: {$successCount} jobs avec délais progressifs");
 
                 return response()->json([
                     'success' => true,
@@ -450,12 +449,14 @@ class AttestationController extends Controller
                         'success_count' => $successCount,
                         'error_count' => $errorCount,
                         'errors' => $errors,
-                        'estimated_duration' => gmdate('H:i:s', $delaySeconds),
-                        'estimated_completion' => now()->addSeconds($delaySeconds)->format('Y-m-d H:i:s'),
+                        'estimated_duration' => gmdate('H:i:s', $totalDurationSeconds),
+                        'estimated_completion' => $estimatedCompletion->format('Y-m-d H:i:s'),
                         'info' => [
-                            'delay_between_emails' => '30 secondes',
+                            'delay_between_emails' => '35 secondes minimum',
                             'queue' => 'emails',
-                            'status' => 'Les emails seront envoyés progressivement'
+                            'method' => 'Délais calculés + Sleep interne',
+                            'jobs_count' => $successCount,
+                            'status' => 'Les jobs sont planifiés avec des délais progressifs calculés'
                         ]
                     ]
                 ]);
@@ -476,7 +477,7 @@ class AttestationController extends Controller
     }
 
     /**
-     * ✅ NOUVEAU: Statut de la queue (pour monitoring)
+     * ✅ Statut de la queue
      */
     public function queueStatus()
     {
@@ -505,7 +506,7 @@ class AttestationController extends Controller
                     ],
                     'timing' => [
                         'last_email_ago_seconds' => $lastSent > 0 ? time() - $lastSent : null,
-                        'can_send_now' => $lastSent === 0 || (time() - $lastSent) >= 30,
+                        'can_send_now' => $lastSent === 0 || (time() - $lastSent) >= 35,
                     ],
                     'hostinger' => [
                         'blocked' => $blockedUntil > time(),
@@ -526,7 +527,7 @@ class AttestationController extends Controller
         }
     }
 
-    // ==================== MÉTHODES EXISTANTES (inchangées) ====================
+    // ==================== MÉTHODES EXISTANTES ====================
 
     public function show($id)
     {
@@ -651,7 +652,7 @@ class AttestationController extends Controller
                 'max_per_hour' => 20,
                 'remaining' => max(0, 20 - $emailsSentThisHour),
                 'last_email_ago' => $lastEmailTimestamp > 0 ? (time() - $lastEmailTimestamp) : null,
-                'can_send_now' => $lastEmailTimestamp === 0 || (time() - $lastEmailTimestamp) >= 30,
+                'can_send_now' => $lastEmailTimestamp === 0 || (time() - $lastEmailTimestamp) >= 35,
                 'hostinger_blocked' => $blockedUntil > time(),
                 'blocked_until' => $blockedUntil > time() ? date('H:i:s', $blockedUntil) : null,
             ]
