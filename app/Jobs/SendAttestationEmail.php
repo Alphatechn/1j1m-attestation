@@ -22,9 +22,9 @@ class SendAttestationEmail implements ShouldQueue
     public $maxExceptions = 2;
 
     // ✅ CONSTANTES
-    const MIN_DELAY_SECONDS = 35; // Délai minimum entre emails
+    const MIN_DELAY_SECONDS = 40; // Délai minimum entre emails (augmenté pour sécurité)
     const MAX_EMAILS_PER_HOUR = 20;
-    const GLOBAL_LOCK_SECONDS = 40; // Lock global pour garantir l'espacement
+    const GLOBAL_LOCK_SECONDS = 60; // Lock global LONG pour garantir l'espacement complet
 
     /**
      * The number of seconds to wait before retrying the job.
@@ -66,13 +66,13 @@ class SendAttestationEmail implements ShouldQueue
             return;
         }
 
-        // ✅ 4. LOCK GLOBAL pour garantir l'espacement (UN SEUL EMAIL À LA FOIS)
+        // ✅ 4. LOCK GLOBAL - PRENDRE LE LOCK EN PREMIER
         $globalLock = Cache::lock('email_global_send_lock', self::GLOBAL_LOCK_SECONDS);
 
         if (!$globalLock->get()) {
-            // Un autre job est en cours, attendre 5 secondes
-            Log::info("🔒 [JOB] Lock global actif, réessai dans 5s: {$this->attestation->attestation_number}");
-            $this->release(5);
+            // Un autre job est en cours, attendre 10 secondes
+            Log::info("🔒 [JOB] Lock global actif, réessai dans 10s: {$this->attestation->attestation_number}");
+            $this->release(10);
             return;
         }
 
@@ -108,6 +108,10 @@ class SendAttestationEmail implements ShouldQueue
 
                 Log::info("✅ [JOB] Email envoyé avec succès: {$this->attestation->attestation_number}");
 
+                // ✅ 10. ATTENDRE 5 secondes de plus pour sécurité
+                Log::info("⏳ [JOB] Pause de sécurité de 5s...");
+                sleep(5);
+
             } finally {
                 $attestationLock->release();
             }
@@ -115,7 +119,9 @@ class SendAttestationEmail implements ShouldQueue
         } catch (\Exception $e) {
             $this->handleSendingError($e);
         } finally {
+            // ✅ LIBÉRER LE LOCK SEULEMENT MAINTENANT
             $globalLock->release();
+            Log::info("🔓 [JOB] Lock global libéré");
         }
     }
 

@@ -412,8 +412,8 @@ class AttestationController extends Controller
                             'content_text' => $this->generateContentText($participant),
                         ]);
 
-                        // ✅ CALCULER le délai progressif
-                        $delaySeconds = SendAttestationEmail::calculateDelay($position);
+                        // ✅ CALCULER le délai progressif (45 secondes entre chaque)
+                        $delaySeconds = $position * 45;
 
                         // ✅ Planifier avec délai calculé
                         SendAttestationEmail::dispatch($attestation)
@@ -437,7 +437,7 @@ class AttestationController extends Controller
 
                 DB::commit();
 
-                $totalDurationSeconds = ($position - 1) * 35; // 35 secondes entre chaque
+                $totalDurationSeconds = ($position - 1) * 45; // 45 secondes entre chaque
                 $estimatedCompletion = now()->addSeconds($totalDurationSeconds);
 
                 Log::info("📊 Envoi massif planifié: {$successCount} jobs avec délais progressifs");
@@ -452,9 +452,9 @@ class AttestationController extends Controller
                         'estimated_duration' => gmdate('H:i:s', $totalDurationSeconds),
                         'estimated_completion' => $estimatedCompletion->format('Y-m-d H:i:s'),
                         'info' => [
-                            'delay_between_emails' => '35 secondes minimum',
+                            'delay_between_emails' => '45 secondes',
                             'queue' => 'emails',
-                            'method' => 'Délais calculés + Sleep interne',
+                            'method' => 'Délais calculés + Sleep interne + Lock global',
                             'jobs_count' => $successCount,
                             'status' => 'Les jobs sont planifiés avec des délais progressifs calculés'
                         ]
@@ -506,7 +506,7 @@ class AttestationController extends Controller
                     ],
                     'timing' => [
                         'last_email_ago_seconds' => $lastSent > 0 ? time() - $lastSent : null,
-                        'can_send_now' => $lastSent === 0 || (time() - $lastSent) >= 35,
+                        'can_send_now' => $lastSent === 0 || (time() - $lastSent) >= 40,
                     ],
                     'hostinger' => [
                         'blocked' => $blockedUntil > time(),
@@ -652,7 +652,7 @@ class AttestationController extends Controller
                 'max_per_hour' => 20,
                 'remaining' => max(0, 20 - $emailsSentThisHour),
                 'last_email_ago' => $lastEmailTimestamp > 0 ? (time() - $lastEmailTimestamp) : null,
-                'can_send_now' => $lastEmailTimestamp === 0 || (time() - $lastEmailTimestamp) >= 35,
+                'can_send_now' => $lastEmailTimestamp === 0 || (time() - $lastEmailTimestamp) >= 40,
                 'hostinger_blocked' => $blockedUntil > time(),
                 'blocked_until' => $blockedUntil > time() ? date('H:i:s', $blockedUntil) : null,
             ]
