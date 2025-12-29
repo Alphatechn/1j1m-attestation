@@ -211,3 +211,62 @@ Route::middleware('auth')->group(function () {
     Route::post('/attestations/bulk/retry', [BulkAttestationController::class, 'retry'])
         ->name('attestations.bulk.retry');
 });
+
+Route::get('/admin/unlock-hostinger', function () {
+
+    // Vérifier l'authentification
+    if (!auth()->check() || !auth()->user()->is_admin) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Accès non autorisé'
+        ], 403);
+    }
+
+    $report = [];
+
+    // 1. Débloquer Hostinger
+    $blockedUntil = Cache::get('hostinger_blocked_until', 0);
+    if ($blockedUntil > time()) {
+        $waitMinutes = ceil(($blockedUntil - time()) / 60);
+        Cache::forget('hostinger_blocked_until');
+        $report['hostinger'] = "Débloqué (était bloqué pour {$waitMinutes} min)";
+    } else {
+        $report['hostinger'] = "N'était pas bloqué";
+    }
+
+    // 2. Réinitialiser timestamp
+    $lastSent = Cache::get('last_email_sent_timestamp', 0);
+    if ($lastSent > 0) {
+        $ago = time() - $lastSent;
+        Cache::forget('last_email_sent_timestamp');
+        $report['timestamp'] = "Réinitialisé (dernier email: {$ago}s)";
+    } else {
+        $report['timestamp'] = "Aucun timestamp trouvé";
+    }
+
+    // 3. Réinitialiser compteur horaire
+    $hourKey = 'email_count_hour_' . date('Y-m-d-H');
+    $currentCount = Cache::get($hourKey, 0);
+    if ($currentCount > 0) {
+        Cache::forget($hourKey);
+        $report['quota'] = "Réinitialisé ({$currentCount}/20 → 0/20)";
+    } else {
+        $report['quota'] = "Déjà à zéro";
+    }
+
+    // 4. Supprimer les locks
+    Cache::forget('email_global_send_lock');
+    $report['locks'] = "Tous les locks supprimés";
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Hostinger débloqué avec succès',
+        'report' => $report,
+        'next_steps' => [
+            'Redémarrer le queue worker',
+            'Vérifier les jobs en attente',
+            'Tester un envoi'
+        ]
+    ]);
+
+})->name('admin.unlock-hostinger');
