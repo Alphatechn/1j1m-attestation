@@ -9,11 +9,12 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
+
 class AttestationService
 {
     // ✅ CONSTANTES UNIFIÉES
-    const MIN_DELAY_SECONDS = 30;
-    const MAX_EMAILS_PER_HOUR = 20; // Utilisé partout maintenant
+    const MIN_DELAY_SECONDS = 40; // Augmenté à 40s
+    const MAX_EMAILS_PER_HOUR = 20;
 
     /**
      * Créer une attestation
@@ -61,8 +62,8 @@ class AttestationService
         }
     }
 
-        /**
-     * ✅ CORRECTION: Vérification quota avec log détaillé
+    /**
+     * ✅ Vérification quota avec log détaillé
      */
     private function validateEmailQuota(): void
     {
@@ -86,7 +87,7 @@ class AttestationService
     }
 
     /**
-     * ✅ CORRECTION: Délai non-bloquant avec timestamp précis
+     * ✅ Délai non-bloquant avec timestamp précis
      */
     private function enforceMinimumDelay(): void
     {
@@ -104,7 +105,7 @@ class AttestationService
     }
 
     /**
-     * ✅ CORRECTION: Incrémenter APRÈS succès uniquement
+     * ✅ Incrémenter APRÈS succès uniquement
      */
     private function incrementEmailCounters(): void
     {
@@ -119,7 +120,6 @@ class AttestationService
     /**
      * Envoyer l'attestation par email
      */
-
     public function sendAttestationByEmail(Attestation $attestation)
     {
         $participant = $attestation->participant;
@@ -166,25 +166,32 @@ class AttestationService
         } catch (\Exception $e) {
             Log::error("❌ Échec envoi: " . $e->getMessage());
 
+            $errorMessage = $e->getMessage();
+
             // ✅ Enregistrer l'erreur
             $attestation->update([
                 'email_status' => 'failed',
-                'email_error' => substr($e->getMessage(), 0, 200)
+                'email_error' => substr($errorMessage, 0, 200)
             ]);
 
-            // ✅ Détecter rate limit Hostinger
-            if (str_contains($e->getMessage(), '451') ||
-                str_contains($e->getMessage(), 'rate') ||
-                str_contains($e->getMessage(), 'limit')) {
+            // ✅ VRAI RATE LIMIT : Seulement 451 ou messages explicites
+            if (str_contains($errorMessage, '451') ||
+                str_contains($errorMessage, 'rate limit') ||
+                str_contains($errorMessage, 'too many emails') ||
+                str_contains($errorMessage, 'quota exceeded')) {
 
                 Log::critical("🚨 RATE LIMIT HOSTINGER DÉTECTÉ");
                 Cache::put('hostinger_blocked_until', time() + 3600, 3700);
+            }
+            // ✅ Timeout 421 : Juste un log, PAS de blocage
+            elseif (str_contains($errorMessage, '421') && str_contains($errorMessage, 'timeout')) {
+                Log::warning("⏱️ Timeout SMTP 421 (connexion fermée par Hostinger) - PAS un rate limit");
+                Log::info("💡 Conseil: Réduire le délai entre tentatives ou vérifier la connexion SMTP");
             }
 
             throw $e;
         }
     }
-
 
     /**
      * Générer le contenu texte de l'attestation
@@ -223,7 +230,6 @@ class AttestationService
         $pdf->SetTitle('Attestation - ' . $attestation->attestation_number);
         $pdf->SetSubject('Attestation de participation');
 
-
         $pdf->setPrintHeader(false);
         $pdf->setPrintFooter(false);
         $pdf->SetMargins(0, 0, 0);
@@ -243,7 +249,6 @@ class AttestationService
             210
         );
 
-
         /*
         |--------------------------------------------------------------------------
         | SIGNATURE IMAGE
@@ -258,7 +263,7 @@ class AttestationService
             'PNG',
         );
 
-                /*
+        /*
         |--------------------------------------------------------------------------
         | CACHET IMAGE
         |--------------------------------------------------------------------------
@@ -272,8 +277,6 @@ class AttestationService
             'PNG',
         );
 
-
-
         // Numéro d'attestation
         $pdf->SetX(300);
         $pdf->SetY(20);
@@ -283,12 +286,11 @@ class AttestationService
         $pdf->SetTextColor(0, 0, 0);
         $pdf->Ln(50);
 
-
         // Participant Name
         $pdf->SetY(62);
         $pdf->SetX(20);
 
-        $maxWidth = 255; // largeur maximale du cadre
+        $maxWidth = 255;
         $fontName = 'playfairdisplay';
         $fontStyle = 'B';
         $initialFontSize = 36;
@@ -296,35 +298,29 @@ class AttestationService
         $participantName = mb_strtoupper($participant->full_name, 'UTF-8');
         $fontSize = $initialFontSize;
 
-        // Boucle pour réduire la police si le texte est trop large
         while ($pdf->GetStringWidth($participantName, $fontName, $fontStyle, $fontSize) > $maxWidth && $fontSize > 8) {
             $fontSize--;
         }
 
         $pdf->SetFont($fontName, $fontStyle, $fontSize);
-
-        // Cell centrée
         $pdf->Cell($maxWidth, 0, $participantName, 0, 1, 'C');
-
         $pdf->SetTextColor(0, 0, 0);
         $pdf->Ln(10);
 
         // CODE QR
-         $verificationUrl = route('public.attestations.verify', ['token' => $attestation->qr_token]);
+        $verificationUrl = route('public.attestations.verify', ['token' => $attestation->qr_token]);
 
-        // Position du QR Code
         $qrX = 64;
         $qrY = 154;
         $qrSize = 30;
 
-        // Générer le QR Code avec TCPDF (style='', pas de paramètre supplémentaire)
         $pdf->write2DBarcode(
             $verificationUrl,
-            'QRCODE,H',  // Type et niveau de correction d'erreur
-            $qrX,        // X position
-            $qrY,        // Y position
-            $qrSize,     // Width
-            $qrSize,     // Height
+            'QRCODE,H',
+            $qrX,
+            $qrY,
+            $qrSize,
+            $qrSize,
             [
                 'border' => false,
                 'padding' => 0,
@@ -344,12 +340,9 @@ class AttestationService
 
         $pdf->Ln(12);
 
-        // Le responsable
-        // $pdf->SetY(150);
         $pdf->SetX(18);
         $pdf->SetFont('montserrat', 'BI', 18);
         $pdf->Cell(259, 7, 'LIONEL TEJEM', 0, 1, 'C');
-
 
         // Date d'émission
         $pdf->SetY(180);
@@ -380,7 +373,6 @@ class AttestationService
             return null;
         }
 
-        // Incrémenter le compteur de vues
         $attestation->increment('view_count');
         $attestation->update(['last_viewed_at' => now()]);
 

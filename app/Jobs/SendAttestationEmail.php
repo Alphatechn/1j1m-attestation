@@ -211,11 +211,13 @@ class SendAttestationEmail implements ShouldQueue
     {
         Log::error("❌ [JOB] Erreur: " . $e->getMessage());
 
-        // Détecter rate limit Hostinger
-        if (str_contains($e->getMessage(), '451') ||
-            str_contains($e->getMessage(), 'rate limit') ||
-            str_contains($e->getMessage(), 'too many') ||
-            str_contains($e->getMessage(), '421')) {
+        $errorMessage = $e->getMessage();
+
+        // ✅ VRAI RATE LIMIT : Seulement 451 ou messages explicites
+        if (str_contains($errorMessage, '451') ||
+            str_contains($errorMessage, 'rate limit') ||
+            str_contains($errorMessage, 'too many emails') ||
+            str_contains($errorMessage, 'quota exceeded')) {
 
             Log::critical("🚨 [JOB] RATE LIMIT HOSTINGER DÉTECTÉ");
             Cache::put('hostinger_blocked_until', time() + 3600, 3700);
@@ -226,8 +228,26 @@ class SendAttestationEmail implements ShouldQueue
             ]);
 
             $this->release(3600);
-        } else {
-            // Réessayer avec backoff
+        }
+        // ✅ TIMEOUT SMTP (421) : Simple réessai avec backoff
+        elseif (str_contains($errorMessage, '421') && str_contains($errorMessage, 'timeout')) {
+            Log::warning("⏱️ [JOB] Timeout SMTP détecté (connexion fermée par Hostinger)");
+
+            $attemptNumber = $this->attempts();
+            $backoffTimes = $this->backoff();
+            $waitTime = $backoffTimes[$attemptNumber - 1] ?? 60;
+
+            Log::info("🔄 [JOB] Réessai dans {$waitTime}s (tentative {$attemptNumber}/{$this->tries})");
+
+            $this->attestation->update([
+                'email_status' => 'pending',
+                'email_error' => 'Timeout SMTP - Réessai en cours'
+            ]);
+
+            $this->release($waitTime);
+        }
+        // ✅ Autres erreurs : Réessai normal
+        else {
             $attemptNumber = $this->attempts();
             $backoffTimes = $this->backoff();
             $waitTime = $backoffTimes[$attemptNumber - 1] ?? 60;
