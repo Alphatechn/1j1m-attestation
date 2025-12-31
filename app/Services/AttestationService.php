@@ -209,9 +209,159 @@ class AttestationService
     /**
      * Générer le PDF de l'attestation
      */
+    // VERSION FRANCAISE
+    // public function generatePDFOutput(Attestation $attestation)
+    // {
+    //    if (!defined('TCPDF_FONTS_DIR')) {
+    //         define('TCPDF_FONTS_DIR', storage_path('all_font/'));
+    //     }
+    //     $participant = $attestation->participant;
+    //     $periode = $attestation->periode;
+
+    //     /*
+    //     |--------------------------------------------------------------------------
+    //     | CRÉATION DU PDF
+    //     |--------------------------------------------------------------------------
+    //     */
+    //     $pdf = new TCPDF('L', 'mm', 'A4', true, 'UTF-8', false);
+
+    //     // Paramètres du document
+    //     $pdf->SetCreator('Plateforme Attestations');
+    //     $pdf->SetAuthor('Système de Gestion');
+    //     $pdf->SetTitle('Attestation - ' . $attestation->attestation_number);
+    //     $pdf->SetSubject('Attestation de participation');
+
+    //     $pdf->setPrintHeader(false);
+    //     $pdf->setPrintFooter(false);
+    //     $pdf->SetMargins(0, 0, 0);
+    //     $pdf->SetAutoPageBreak(false, 0);
+    //     $pdf->AddPage();
+
+    //     /*
+    //     |--------------------------------------------------------------------------
+    //     | TEMPLATE (IMAGE DE FOND)
+    //     |--------------------------------------------------------------------------
+    //     */
+    //     $pdf->Image(
+    //         public_path('pdf/templates/attestation_1j1m.jpg'),
+    //         0,
+    //         0,
+    //         297,
+    //         210
+    //     );
+
+    //     /*
+    //     |--------------------------------------------------------------------------
+    //     | SIGNATURE IMAGE
+    //     |--------------------------------------------------------------------------
+    //     */
+    //     $pdf->Image(
+    //         public_path('pdf/templates/signature.png'),
+    //         100,
+    //         150,
+    //         70,
+    //         0,
+    //         'PNG',
+    //     );
+
+    //     /*
+    //     |--------------------------------------------------------------------------
+    //     | CACHET IMAGE
+    //     |--------------------------------------------------------------------------
+    //     */
+    //     $pdf->Image(
+    //         public_path('pdf/templates/cachet.png'),
+    //         190,
+    //         135,
+    //         50,
+    //         0,
+    //         'PNG',
+    //     );
+
+    //     // Numéro d'attestation
+    //     $pdf->SetX(300);
+    //     $pdf->SetY(20);
+    //     $pdf->SetFont('helvetica', 'I', 10);
+    //     $pdf->SetTextColor(100, 100, 100);
+    //     $pdf->Cell(100, 5, 'N° ' . $attestation->attestation_number, 0, 1, 'C');
+    //     $pdf->SetTextColor(0, 0, 0);
+    //     $pdf->Ln(50);
+
+    //     // Participant Name
+    //     $pdf->SetY(62);
+    //     $pdf->SetX(20);
+
+    //     $maxWidth = 255;
+    //     $fontName = 'playfairdisplay';
+    //     $fontStyle = 'B';
+    //     $initialFontSize = 36;
+
+    //     $participantName = mb_strtoupper($participant->full_name, 'UTF-8');
+    //     $fontSize = $initialFontSize;
+
+    //     while ($pdf->GetStringWidth($participantName, $fontName, $fontStyle, $fontSize) > $maxWidth && $fontSize > 8) {
+    //         $fontSize--;
+    //     }
+
+    //     $pdf->SetFont($fontName, $fontStyle, $fontSize);
+    //     $pdf->Cell($maxWidth, 0, $participantName, 0, 1, 'C');
+    //     $pdf->SetTextColor(0, 0, 0);
+    //     $pdf->Ln(10);
+
+    //     // CODE QR
+    //     $verificationUrl = route('public.attestations.verify', ['token' => $attestation->qr_token]);
+
+    //     $qrX = 64;
+    //     $qrY = 154;
+    //     $qrSize = 30;
+
+    //     $pdf->write2DBarcode(
+    //         $verificationUrl,
+    //         'QRCODE,H',
+    //         $qrX,
+    //         $qrY,
+    //         $qrSize,
+    //         $qrSize,
+    //         [
+    //             'border' => false,
+    //             'padding' => 0,
+    //             'fgcolor' => [0, 0, 0],
+    //             'bgcolor' => [255, 255, 255]
+    //         ],
+    //         'N'
+    //     );
+
+    //     $pdf->Ln(10);
+
+    //     // Le responsable
+    //     $pdf->SetY(150);
+    //     $pdf->SetX(18);
+    //     $pdf->SetFont('montserrat', 'u', 18);
+    //     $pdf->Cell(259, 7, 'Le promoteur', 0, 1, 'C');
+
+    //     $pdf->Ln(12);
+
+    //     $pdf->SetX(18);
+    //     $pdf->SetFont('montserrat', 'BI', 18);
+    //     $pdf->Cell(259, 7, 'LIONEL TEJEM', 0, 1, 'C');
+
+    //     // Date d'émission
+    //     $pdf->SetY(180);
+    //     $pdf->SetX(178);
+    //     $pdf->SetFont('helvetica', 'B', 11);
+    //     $pdf->Cell(70, 7, 'Fait à Yaoundé le : ' . $attestation->issue_date->locale('fr')->isoFormat('DD MMMM YYYY'), 0, 1, 'C');
+
+    //     /*
+    //     |--------------------------------------------------------------------------
+    //     | SORTIE DU PDF
+    //     |--------------------------------------------------------------------------
+    //     */
+    //     return $pdf->Output('', 'S');
+    // }
+    // VERSION ANGLAISE
     public function generatePDFOutput(Attestation $attestation)
     {
-       if (!defined('TCPDF_FONTS_DIR')) {
+        if (!defined('TCPDF_FONTS_DIR')) {
             define('TCPDF_FONTS_DIR', storage_path('all_font/'));
         }
         $participant = $attestation->participant;
@@ -219,16 +369,16 @@ class AttestationService
 
         /*
         |--------------------------------------------------------------------------
-        | CRÉATION DU PDF
+        | PDF CREATION
         |--------------------------------------------------------------------------
         */
         $pdf = new TCPDF('L', 'mm', 'A4', true, 'UTF-8', false);
 
-        // Paramètres du document
-        $pdf->SetCreator('Plateforme Attestations');
-        $pdf->SetAuthor('Système de Gestion');
-        $pdf->SetTitle('Attestation - ' . $attestation->attestation_number);
-        $pdf->SetSubject('Attestation de participation');
+        // Document parameters
+        $pdf->SetCreator('Attestations Platform');
+        $pdf->SetAuthor('Management System');
+        $pdf->SetTitle('Certificate - ' . $attestation->attestation_number);
+        $pdf->SetSubject('Certificate of participation');
 
         $pdf->setPrintHeader(false);
         $pdf->setPrintFooter(false);
@@ -238,11 +388,11 @@ class AttestationService
 
         /*
         |--------------------------------------------------------------------------
-        | TEMPLATE (IMAGE DE FOND)
+        | TEMPLATE (BACKGROUND IMAGE)
         |--------------------------------------------------------------------------
         */
         $pdf->Image(
-            public_path('pdf/templates/attestation_1j1m.jpg'),
+            public_path('pdf/templates/attestation_1j1m_en.jpg'), // Use English template
             0,
             0,
             297,
@@ -265,7 +415,7 @@ class AttestationService
 
         /*
         |--------------------------------------------------------------------------
-        | CACHET IMAGE
+        | STAMP IMAGE
         |--------------------------------------------------------------------------
         */
         $pdf->Image(
@@ -277,12 +427,12 @@ class AttestationService
             'PNG',
         );
 
-        // Numéro d'attestation
+        // Certificate number
         $pdf->SetX(300);
         $pdf->SetY(20);
         $pdf->SetFont('helvetica', 'I', 10);
         $pdf->SetTextColor(100, 100, 100);
-        $pdf->Cell(100, 5, 'N° ' . $attestation->attestation_number, 0, 1, 'C');
+        $pdf->Cell(100, 5, 'No. ' . $attestation->attestation_number, 0, 1, 'C');
         $pdf->SetTextColor(0, 0, 0);
         $pdf->Ln(50);
 
@@ -307,7 +457,7 @@ class AttestationService
         $pdf->SetTextColor(0, 0, 0);
         $pdf->Ln(10);
 
-        // CODE QR
+        // QR CODE
         $verificationUrl = route('public.attestations.verify', ['token' => $attestation->qr_token]);
 
         $qrX = 64;
@@ -332,11 +482,11 @@ class AttestationService
 
         $pdf->Ln(10);
 
-        // Le responsable
+        // The director
         $pdf->SetY(150);
         $pdf->SetX(18);
         $pdf->SetFont('montserrat', 'u', 18);
-        $pdf->Cell(259, 7, 'Le promoteur', 0, 1, 'C');
+        $pdf->Cell(259, 7, 'The Promoter', 0, 1, 'C');
 
         $pdf->Ln(12);
 
@@ -344,15 +494,15 @@ class AttestationService
         $pdf->SetFont('montserrat', 'BI', 18);
         $pdf->Cell(259, 7, 'LIONEL TEJEM', 0, 1, 'C');
 
-        // Date d'émission
+        // Issue date
         $pdf->SetY(180);
         $pdf->SetX(178);
         $pdf->SetFont('helvetica', 'B', 11);
-        $pdf->Cell(70, 7, 'Fait à Yaoundé le : ' . $attestation->issue_date->locale('fr')->isoFormat('DD MMMM YYYY'), 0, 1, 'C');
+        $pdf->Cell(70, 7, 'Issued in Yaounde on: ' . $attestation->issue_date->locale('en')->isoFormat('MMMM DD, YYYY'), 0, 1, 'C');
 
         /*
         |--------------------------------------------------------------------------
-        | SORTIE DU PDF
+        | PDF OUTPUT
         |--------------------------------------------------------------------------
         */
         return $pdf->Output('', 'S');
