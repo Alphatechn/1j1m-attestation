@@ -188,7 +188,7 @@ Route::get('/email-status', function() {
 Route::middleware('auth')->group(function () {
 
     // Page d'envoi massif
-    Route::get('/attestations/bulk', [BulkAttestationController::class, 'index'])
+    Route::get('/attestations/bulk/index', [BulkAttestationController::class, 'index'])
         ->name('attestations.bulk.index');
 
     // Prévisualiser avant envoi

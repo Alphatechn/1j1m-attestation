@@ -3,6 +3,7 @@
 @section('title', 'Envoi Massif d\'Attestations')
 
 @section('content')
+
 <div class="container-fluid px-4">
     <h1 class="mt-4">📤 Envoi Massif d'Attestations</h1>
 
@@ -161,8 +162,9 @@
         </div>
     </div>
 </div>
+@endsection
 
-@push('scripts')
+@section('scripts')
 <script>
 let previewData = null;
 
@@ -403,6 +405,5 @@ function showAlert(type, message) {
     }, 5000);
 }
 </script>
-@endpush
 
 @endsection

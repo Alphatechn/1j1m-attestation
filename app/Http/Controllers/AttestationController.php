@@ -50,7 +50,6 @@ class AttestationController extends Controller
 
             Log::info("Attestation trouvée: {$attestation->attestation_number}");
             return $this->attestationService->downloadPDF($attestation);
-
         } catch (\Exception $e) {
             Log::error("Erreur téléchargement: " . $e->getMessage());
             abort(500, 'Erreur lors du téléchargement');
@@ -73,7 +72,6 @@ class AttestationController extends Controller
 
             Log::info("Attestation trouvée: {$attestation->attestation_number}");
             return $this->attestationService->displayPDF($attestation);
-
         } catch (\Exception $e) {
             Log::error("Erreur preview: " . $e->getMessage());
             abort(500, 'Erreur lors de la visualisation');
@@ -132,7 +130,6 @@ class AttestationController extends Controller
                     ? "Attestation trouvée"
                     : "Aucune attestation trouvée pour \"{$request->name}\""
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -181,7 +178,6 @@ class AttestationController extends Controller
                 'data' => $attestation->load(['participant', 'periode']),
                 'message' => 'Attestation trouvée avec succès!'
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -207,11 +203,11 @@ class AttestationController extends Controller
 
             if ($request->filled('search')) {
                 $search = $request->search;
-                $query->where(function($q) use ($search) {
+                $query->where(function ($q) use ($search) {
                     $q->where('attestation_number', 'LIKE', "%{$search}%")
-                      ->orWhereHas('participant', function($q) use ($search) {
-                          $q->where('name', 'LIKE', "%{$search}%");
-                      });
+                        ->orWhereHas('participant', function ($q) use ($search) {
+                            $q->where('name', 'LIKE', "%{$search}%");
+                        });
                 });
             }
 
@@ -260,7 +256,6 @@ class AttestationController extends Controller
 
             // ✅ OPTION 2: Envoi immédiat (pour envoi unique)
             return $this->storeImmediate($participant);
-
         } catch (\Exception $e) {
             Log::error("❌ Erreur création: " . $e->getMessage());
 
@@ -298,18 +293,32 @@ class AttestationController extends Controller
             'content_text' => $this->attestationService->generateContentText($participant),
         ]);
 
-        // ✅ Planifier IMMÉDIATEMENT (le job gérera le délai en interne)
-        SendAttestationEmail::dispatch($attestation)
-            ->onQueue('emails');
+        // ✅ Compter les jobs en attente dans la dernière heure
+        $pendingCount = Attestation::where('email_status', 'pending')
+            ->where('created_at', '>=', now()->subHour())
+            ->count();
 
-        Log::info("📦 Attestation créée et planifiée: {$attestation->attestation_number}");
+        // ✅ Calculer le délai (40 secondes par position)
+        $delaySeconds = $pendingCount * 40;
+
+        // ✅ Planifier avec délai calculé
+        SendAttestationEmail::dispatch($attestation)
+            ->onQueue('emails')
+            ->delay(now()->addSeconds($delaySeconds));
+
+        $estimatedTime = now()->addSeconds($delaySeconds)->format('H:i:s');
+
+        Log::info("📦 Attestation créée: {$attestation->attestation_number} | Position: {$pendingCount} | Délai: {$delaySeconds}s | Envoi prévu: {$estimatedTime}");
 
         return response()->json([
             'success' => true,
             'message' => 'Attestation créée et planifiée pour envoi.',
             'attestation' => $attestation->load('participant'),
             'queue_info' => [
-                'status' => 'Le job gérera automatiquement les délais entre envois',
+                'position' => $pendingCount + 1,
+                'delay_seconds' => $delaySeconds,
+                'estimated_send_time' => $estimatedTime,
+                'status' => 'Le job sera exécuté automatiquement',
                 'queue' => 'emails'
             ]
         ]);
@@ -339,7 +348,7 @@ class AttestationController extends Controller
     }
 
     /**
-     * ✅ AMÉLIORATION: Envoi massif avec délais CALCULÉS
+     * ✅ Envoi massif avec délais COHÉRENTS
      */
     public function bulkStore(Request $request)
     {
@@ -347,7 +356,7 @@ class AttestationController extends Controller
             'periode_id' => 'required|exists:periodes,id',
             'participant_ids' => 'nullable|array',
             'participant_ids.*' => 'exists:participants,id',
-            'limit' => 'nullable|integer|min:1|max:100',
+            'limit' => 'nullable|integer|min:1|max:20', // ← Réduit à 20 max (quota horaire)
         ]);
 
         try {
@@ -362,6 +371,19 @@ class AttestationController extends Controller
                 ], 503);
             }
 
+            // ✅ Vérifier le quota horaire actuel
+            $hourKey = 'email_count_hour_' . date('Y-m-d-H');
+            $currentHourCount = Cache::get($hourKey, 0);
+            $availableSlots = SendAttestationEmail::MAX_EMAILS_PER_HOUR - $currentHourCount;
+
+            if ($availableSlots <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "🚫 Quota horaire atteint ({$currentHourCount}/20). Réessayez dans la prochaine heure.",
+                    'type' => 'quota_exceeded'
+                ], 429);
+            }
+
             // Récupérer les participants
             $query = Participant::whereDoesntHave('attestations')
                 ->whereNotNull('email')
@@ -371,7 +393,8 @@ class AttestationController extends Controller
                 $query->whereIn('id', $request->participant_ids);
             }
 
-            $limit = $request->input('limit', 20);
+            // ✅ Limiter au quota disponible
+            $limit = min($request->input('limit', 20), $availableSlots);
             $participants = $query->limit($limit)->get();
 
             if ($participants->isEmpty()) {
@@ -385,7 +408,7 @@ class AttestationController extends Controller
             $successCount = 0;
             $errorCount = 0;
             $errors = [];
-            $position = 0; // Position dans la queue
+            $position = 0;
 
             DB::beginTransaction();
 
@@ -395,7 +418,7 @@ class AttestationController extends Controller
                         // Valider email
                         if (!filter_var($participant->email, FILTER_VALIDATE_EMAIL)) {
                             $errors[] = [
-                                'participant' => $participant->full_name,
+                                'participant' => $participant->full_name ?? $participant->nom . ' ' . $participant->prenom,
                                 'error' => 'Format email invalide'
                             ];
                             $errorCount++;
@@ -409,38 +432,40 @@ class AttestationController extends Controller
                             'generated_by' => auth()->id(),
                             'issue_date' => now(),
                             'status' => 'pending',
-                            'content_text' => $this->generateContentText($participant),
+                            'content_text' => $this->attestationService->generateContentText($participant),
                         ]);
 
-                        // ✅ CALCULER le délai progressif (45 secondes entre chaque)
-                        $delaySeconds = $position * 45;
+                        // ✅ UTILISER LA CONSTANTE du Job (40 secondes)
+                        $delaySeconds = $position * SendAttestationEmail::MIN_DELAY_SECONDS;
 
                         // ✅ Planifier avec délai calculé
                         SendAttestationEmail::dispatch($attestation)
                             ->onQueue('emails')
                             ->delay(now()->addSeconds($delaySeconds));
 
-                        Log::info("📦 Job #{$position} planifié pour dans {$delaySeconds}s: {$attestation->attestation_number}");
+                        $estimatedTime = now()->addSeconds($delaySeconds)->format('H:i:s');
+
+                        Log::info("📦 [BULK] Job #{$position} planifié: {$attestation->attestation_number} | Délai: {$delaySeconds}s | Envoi: {$estimatedTime}");
 
                         $successCount++;
                         $position++;
-
                     } catch (\Exception $e) {
                         $errors[] = [
-                            'participant' => $participant->full_name,
+                            'participant' => $participant->full_name ?? $participant->nom . ' ' . $participant->prenom,
                             'error' => $e->getMessage()
                         ];
                         $errorCount++;
-                        Log::error("Erreur création attestation: " . $e->getMessage());
+                        Log::error("❌ [BULK] Erreur création: " . $e->getMessage());
                     }
                 }
 
                 DB::commit();
 
-                $totalDurationSeconds = ($position - 1) * 45; // 45 secondes entre chaque
+                // ✅ Calculer durée avec la bonne constante (40s)
+                $totalDurationSeconds = ($position > 0) ? (($position - 1) * SendAttestationEmail::MIN_DELAY_SECONDS) : 0;
                 $estimatedCompletion = now()->addSeconds($totalDurationSeconds);
 
-                Log::info("📊 Envoi massif planifié: {$successCount} jobs avec délais progressifs");
+                Log::info("📊 [BULK] Envoi massif planifié: {$successCount} jobs | Durée estimée: " . gmdate('i:s', $totalDurationSeconds));
 
                 return response()->json([
                     'success' => true,
@@ -449,25 +474,33 @@ class AttestationController extends Controller
                         'success_count' => $successCount,
                         'error_count' => $errorCount,
                         'errors' => $errors,
-                        'estimated_duration' => gmdate('H:i:s', $totalDurationSeconds),
-                        'estimated_completion' => $estimatedCompletion->format('Y-m-d H:i:s'),
+                        'quota_info' => [
+                            'used_this_hour' => $currentHourCount,
+                            'available_slots' => $availableSlots,
+                            'new_jobs_created' => $successCount,
+                            'remaining_slots' => $availableSlots - $successCount
+                        ],
+                        'timing' => [
+                            'delay_between_emails' => SendAttestationEmail::MIN_DELAY_SECONDS . ' secondes',
+                            'estimated_duration' => gmdate('i:s', $totalDurationSeconds) . ' (mm:ss)',
+                            'estimated_completion' => $estimatedCompletion->format('H:i:s'),
+                            'first_email_at' => now()->format('H:i:s'),
+                            'last_email_at' => $estimatedCompletion->format('H:i:s')
+                        ],
                         'info' => [
-                            'delay_between_emails' => '45 secondes',
                             'queue' => 'emails',
-                            'method' => 'Délais calculés + Sleep interne + Lock global',
+                            'method' => 'Délais progressifs calculés (0s, 40s, 80s, ...)',
                             'jobs_count' => $successCount,
-                            'status' => 'Les jobs sont planifiés avec des délais progressifs calculés'
+                            'status' => 'Jobs planifiés et espacés automatiquement'
                         ]
                     ]
                 ]);
-
             } catch (\Exception $e) {
                 DB::rollBack();
                 throw $e;
             }
-
         } catch (\Exception $e) {
-            Log::error("Erreur envoi massif: " . $e->getMessage());
+            Log::error("❌ [BULK] Erreur générale: " . $e->getMessage());
 
             return response()->json([
                 'success' => false,
@@ -518,7 +551,6 @@ class AttestationController extends Controller
                     ],
                 ]
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -539,7 +571,6 @@ class AttestationController extends Controller
                 'success' => true,
                 'data' => $attestation
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -582,7 +613,6 @@ class AttestationController extends Controller
                 'success' => true,
                 'message' => 'Attestation envoyée avec succès à ' . $attestation->participant->email
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -596,7 +626,6 @@ class AttestationController extends Controller
         try {
             $attestation = Attestation::with(['participant', 'periode'])->findOrFail($id);
             return $this->attestationService->downloadPDF($attestation);
-
         } catch (\Exception $e) {
             abort(404, 'Attestation non trouvée');
         }
@@ -607,7 +636,6 @@ class AttestationController extends Controller
         try {
             $attestation = Attestation::with(['participant', 'periode'])->findOrFail($id);
             return $this->attestationService->displayPDF($attestation);
-
         } catch (\Exception $e) {
             abort(404, 'Attestation non trouvée');
         }
@@ -623,7 +651,6 @@ class AttestationController extends Controller
                 'success' => true,
                 'message' => 'Attestation supprimée avec succès.'
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -671,8 +698,8 @@ class AttestationController extends Controller
     {
         $periode = $participant->periode;
         return "Je soussigné(e), certifie que {$participant->full_name} " .
-               "a participé à la formation/session organisée durant la période " .
-               "{$periode->full_libelle}. Cette attestation est délivrée pour servir " .
-               "et valoir ce que de droit.";
+            "a participé à la formation/session organisée durant la période " .
+            "{$periode->full_libelle}. Cette attestation est délivrée pour servir " .
+            "et valoir ce que de droit.";
     }
 }

@@ -24,7 +24,7 @@ class SendAttestationEmail implements ShouldQueue
     // ✅ CONSTANTES
     const MIN_DELAY_SECONDS = 40; // Délai minimum entre emails (augmenté pour sécurité)
     const MAX_EMAILS_PER_HOUR = 20;
-    const GLOBAL_LOCK_SECONDS = 60; // Lock global LONG pour garantir l'espacement complet
+    const GLOBAL_LOCK_SECONDS = 50; // Lock global LONG pour garantir l'espacement complet
 
     /**
      * The number of seconds to wait before retrying the job.
