@@ -215,7 +215,7 @@ Route::middleware('auth')->group(function () {
 Route::get('/admin/unlock-hostinger', function () {
 
     // Vérifier l'authentification
-    if (!auth()->check() || !auth()->user()->is_admin) {
+    if (!auth()->check()) {
         return response()->json([
             'success' => false,
             'message' => 'Accès non autorisé'
