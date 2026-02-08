@@ -76,6 +76,9 @@
             <div id="hostinger-block" class="alert alert-danger mt-3" style="display: none;">
                 <strong>🚨 HOSTINGER BLOQUÉ</strong>
                 <p class="mb-0" id="hostinger-block-text"></p>
+                <button class="btn btn-warning btn-sm mt-2" onclick="unlockHostinger()">
+                    <i class="fas fa-unlock"></i> Débloquer Maintenant
+                </button>
             </div>
         </div>
     </div>
@@ -140,12 +143,23 @@
             Actions Rapides
         </div>
         <div class="card-body">
-            <button class="btn btn-warning" onclick="cancelPendingJobs()">
-                <i class="fas fa-ban"></i> Annuler les Envois en Attente
-            </button>
-            <button class="btn btn-danger" onclick="retryFailedJobs()">
-                <i class="fas fa-redo"></i> Réessayer les Échecs
-            </button>
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <button class="btn btn-warning w-100" onclick="cancelPendingJobs()">
+                        <i class="fas fa-ban"></i> Annuler les Envois en Attente
+                    </button>
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-danger w-100" onclick="retryFailedJobs()">
+                        <i class="fas fa-redo"></i> Réessayer les Échecs
+                    </button>
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-dark w-100" onclick="unlockHostinger()">
+                        <i class="fas fa-unlock-alt"></i> Réinitialiser Hostinger
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -231,6 +245,52 @@ function updateStatusDisplay(status) {
         html += '</tbody></table>';
         document.getElementById('recent-sends').innerHTML = html;
     }
+}
+
+function unlockHostinger() {
+    if (!confirm('⚠️ Êtes-vous sûr de vouloir réinitialiser tous les verrous Hostinger ?\n\nCela va :\n- Débloquer Hostinger\n- Réinitialiser le compteur de quota\n- Supprimer tous les locks\n- Réinitialiser le timestamp')) {
+        return;
+    }
+
+    showAlert('info', '🔄 Réinitialisation en cours...');
+
+    fetch('{{ route("admin.unlock-hostinger") }}', {
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json'
+        }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            let reportHtml = '<div class="alert alert-success"><h5>✅ ' + data.message + '</h5>';
+
+            // Rapport détaillé
+            reportHtml += '<hr><h6>📊 Rapport détaillé :</h6><ul class="mb-0">';
+            reportHtml += `<li><strong>Hostinger:</strong> ${data.report.hostinger}</li>`;
+            reportHtml += `<li><strong>Timestamp:</strong> ${data.report.timestamp}</li>`;
+            reportHtml += `<li><strong>Quota:</strong> ${data.report.quota}</li>`;
+            reportHtml += `<li><strong>Locks:</strong> ${data.report.locks}</li>`;
+            reportHtml += '</ul>';
+
+            // Prochaines étapes
+            reportHtml += '<hr><h6>🔔 Prochaines étapes :</h6><ol class="mb-0">';
+            data.next_steps.forEach(step => {
+                reportHtml += `<li>${step}</li>`;
+            });
+            reportHtml += '</ol></div>';
+
+            showAlert('success', reportHtml);
+
+            // Rafraîchir le statut après 1 seconde
+            setTimeout(refreshStatus, 1000);
+        } else {
+            showAlert('danger', '❌ ' + data.message);
+        }
+    })
+    .catch(err => {
+        showAlert('danger', '❌ Erreur lors de la réinitialisation: ' + err.message);
+    });
 }
 
 function previewBulkSend() {
@@ -398,11 +458,11 @@ function showAlert(type, message) {
     `;
     document.getElementById('alert-container').innerHTML = alertHTML;
 
-    // Auto-dismiss après 5 secondes
+    // Auto-dismiss après 8 secondes pour les messages de succès détaillés
     setTimeout(() => {
         const alert = document.querySelector('.alert');
         if (alert) alert.remove();
-    }, 5000);
+    }, type === 'success' ? 8000 : 5000);
 }
 </script>
 

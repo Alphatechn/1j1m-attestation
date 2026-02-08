@@ -60,13 +60,6 @@
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a href="{{ route('admin.unlock-hostinger') }}" class="nav-link {{ request()->routeIs('admin.unlock-hostinger') ? 'active' : '' }}">
-
-                        <i class="nav-icon bi bi-unlock"></i>
-                        <p>Débloquer Hostinger</p>
-                    </a>
-                </li>
-                <li class="nav-item">
                     <a href="{{ route('users.profile') }}" class="nav-link {{ request()->routeIs('users.profile') ? 'active' : '' }}">
                         <!-- Profile -->
                         <i class="nav-icon bi bi-person"></i>
