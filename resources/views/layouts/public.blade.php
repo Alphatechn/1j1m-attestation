@@ -27,6 +27,18 @@
             color: var(--black);
             display: flex;
             flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        img,
+        svg,
+        video,
+        canvas {
+            max-width: 100%;
+        }
+
+        img {
+            height: auto;
         }
 
         .main-content {
@@ -40,6 +52,7 @@
             overflow: hidden;
             border: 2px solid var(--primary-gold);
             margin: 2rem 0;
+            width: 100%;
         }
 
         .header-section {
@@ -53,6 +66,7 @@
         .logo-container {
             max-width: 300px;
             margin: 0 auto 1rem;
+            width: min(300px, 86vw);
         }
 
         .logo-image {
@@ -75,6 +89,7 @@
             transition: all 0.3s ease;
             background: var(--white);
             color: var(--black);
+            overflow-wrap: anywhere;
         }
 
         .method-card:hover {
@@ -98,12 +113,20 @@
             border-radius: 15px;
             padding: 2rem;
             border: 2px solid var(--primary-gold);
+            width: 100%;
         }
 
         .attestation-card {
             border-left: 4px solid var(--secondary-gold);
             background: linear-gradient(135deg, var(--light-gray), #fff9e6);
             color: var(--black);
+            overflow-wrap: anywhere;
+        }
+
+        .attestation-card code,
+        .method-card code {
+            white-space: normal;
+            word-break: break-word;
         }
 
         .btn-primary-custom {
@@ -116,6 +139,7 @@
             transition: all 0.3s ease;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            white-space: normal;
         }
 
         .btn-primary-custom:hover {
@@ -192,7 +216,90 @@
             font-size: 1.5rem;
             margin-bottom: 0.5rem;
         }
+
+        @media (max-width: 768px) {
+            .header-section {
+                padding: 1.25rem 1rem;
+            }
+
+            .logo-subtitle {
+                font-size: 1rem;
+                line-height: 1.4;
+            }
+
+            .public-container {
+                border-radius: 14px;
+                margin: 1rem 0;
+            }
+
+            .main-content > .container,
+            .footer-section > .container {
+                max-width: 100%;
+                padding-left: .85rem;
+                padding-right: .85rem;
+            }
+
+            .method-card,
+            .search-form,
+            .footer-help {
+                padding: 1rem !important;
+            }
+
+            .method-icon {
+                font-size: 2.25rem;
+            }
+
+            .qr-scanner {
+                padding: 1rem;
+            }
+
+            .btn-primary-custom,
+            .btn {
+                max-width: 100%;
+            }
+
+            .public-container .d-flex {
+                flex-wrap: wrap;
+            }
+
+            .public-container .text-center .btn,
+            .public-container .d-flex .btn {
+                margin-bottom: .5rem;
+            }
+
+            .attestation-card .row > [class*="col-"] + [class*="col-"] {
+                margin-top: .75rem;
+            }
+
+            .table-responsive {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+        }
+
+        @media (max-width: 420px) {
+            .public-container {
+                border-left: 0;
+                border-right: 0;
+                border-radius: 0;
+            }
+
+            .container-fluid.p-4,
+            .container-fluid.p-5 {
+                padding: 1rem !important;
+            }
+
+            .public-container .btn {
+                width: 100%;
+            }
+
+            .public-container .text-center .me-2,
+            .public-container .text-center .me-3 {
+                margin-right: 0 !important;
+            }
+        }
     </style>
+    @yield('styles')
 </head>
 <body>
     <!-- Header -->

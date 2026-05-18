@@ -10,6 +10,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- Bootstrap CSS (doit venir en premier car c'est le framework de base) -->
     @include('layouts.inc.css')
+    @yield('styles')
 </head>
 <!--end::Head-->
 <!--begin::Body-->

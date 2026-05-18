@@ -16,8 +16,30 @@
         </div>
 
         <div class="row g-4">
+            <div class="col-md-6 col-lg-3">
+                <div class="method-card text-center p-4 h-100">
+                    <div class="method-icon">
+                        <i class="bi bi-clipboard-check"></i>
+                    </div>
+                    <h4 class="fw-bold mb-3">Demande d'attestation</h4>
+                    <p class="text-muted mb-4">
+                        Remplissez le formulaire participant pour validation avant génération de votre attestation
+                    </p>
+                    <div class="text-muted mb-4">
+                        <i class="bi bi-check-circle text-success me-1"></i>
+                        Informations de formation<br>
+                        <i class="bi bi-check-circle text-success me-1"></i>
+                        Preuve de devoir<br>
+                        <i class="bi bi-check-circle text-success me-1"></i>
+                        Validation par l'équipe
+                    </div>
+                    <a href="{{ route('public.participants.request') }}" class="btn btn-primary-custom w-100">
+                        <i class="bi bi-send-check me-2"></i>Remplir le formulaire
+                    </a>
+                </div>
+            </div>
             <!-- Méthode 1: QR Code -->
-            <div class="col-md-4">
+            <div class="col-md-6 col-lg-3">
                 <div class="method-card text-center p-4 h-100">
                     <div class="method-icon">
                         <i class="bi bi-qr-code-scan"></i>
@@ -38,7 +60,7 @@
             </div>
 
             <!-- Méthode 2: Recherche par Nom -->
-            <div class="col-md-4">
+            <div class="col-md-6 col-lg-3">
                 <div class="method-card text-center p-4 h-100">
                     <div class="method-icon">
                         <i class="bi bi-person-search"></i>
@@ -62,7 +84,7 @@
             </div>
 
             <!-- Méthode 3: Numéro d'Attestation -->
-            <div class="col-md-4">
+            <div class="col-md-6 col-lg-3">
                 <div class="method-card text-center p-4 h-100">
                     <div class="method-icon">
                         <i class="bi bi-file-text"></i>

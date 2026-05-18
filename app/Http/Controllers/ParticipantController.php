@@ -13,21 +13,138 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ParticipantController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('auth');
+        $this->middleware('auth')->except(['publicForm', 'publicSubmit']);
         $this->middleware('permission:manage participants')->except([
         'index',                    // public function index()
         'show',                     // public function show()
         'export',                   // public function export()
         'downloadTemplate',         // public function downloadTemplate()
         'listByPeriode',            // public function listByPeriode()
-        'withoutAttestation'        // public function withoutAttestation()
+        'withoutAttestation',       // public function withoutAttestation()
+        'publicForm',
+        'publicSubmit'
     ]);
+    }
+
+    public function publicForm()
+    {
+        return view('Participants.public-form');
+    }
+
+    public function publicSubmit(Request $request)
+    {
+        $periode = Periode::active()
+            ->orderByDesc('date_debut')
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$periode) {
+            return back()->withInput()->withErrors([
+                'periode' => 'Aucune période active n\'est disponible pour le moment. Veuillez réessayer plus tard.',
+            ]);
+        }
+
+        $validated = $request->validate([
+            'civility' => 'required|string|max:20',
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|max:255',
+            'city' => 'required|string|max:255',
+            'whatsapp' => 'required|string|max:30',
+            'training_group' => 'required|string|max:255',
+            'classmates_contacts' => 'required|string|min:10',
+            'course_delivery_explanation' => 'required|string|min:20',
+            'technical_skills' => 'required|string|min:20',
+            'public_speaking_description' => 'required|string|min:20',
+            'ecommerce_steps' => 'required|string|min:20',
+            'knowledge_use_plan' => 'required|string|min:20',
+            'coaches' => 'required|string|min:10',
+            'homework_screenshots' => 'required|array|min:1|max:6',
+            'homework_screenshots.*' => 'required|image|mimes:jpg,jpeg,png,webp|max:4096',
+        ], [
+            'civility.required' => 'La civilité est obligatoire.',
+            'name.required' => 'Les noms et prénoms complets sont obligatoires.',
+            'email.required' => 'L\'adresse email est obligatoire.',
+            'email.email' => 'Veuillez renseigner une adresse email valide.',
+            'city.required' => 'La ville est obligatoire.',
+            'whatsapp.required' => 'Le numéro WhatsApp est obligatoire.',
+            'training_group.required' => 'Le groupe de formation est obligatoire.',
+            'classmates_contacts.required' => 'Veuillez renseigner les noms et WhatsApp de 3 camarades.',
+            'classmates_contacts.min' => 'Les informations sur vos camarades sont trop courtes.',
+            'course_delivery_explanation.required' => 'Veuillez expliquer comment les cours sont dispensés à 1J1M.',
+            'course_delivery_explanation.min' => 'Votre explication sur le déroulement des cours est trop courte.',
+            'technical_skills.required' => 'Veuillez préciser les compétences techniques acquises.',
+            'technical_skills.min' => 'Votre description des compétences techniques est trop courte.',
+            'public_speaking_description.required' => 'Veuillez décrire votre méthode actuelle en art oratoire.',
+            'public_speaking_description.min' => 'Votre description en art oratoire est trop courte.',
+            'ecommerce_steps.required' => 'Veuillez décrire les étapes de mise en place d\'une activité e-commerce.',
+            'ecommerce_steps.min' => 'Votre description des étapes e-commerce est trop courte.',
+            'knowledge_use_plan.required' => 'Veuillez expliquer comment vous comptez mettre vos compétences à profit.',
+            'knowledge_use_plan.min' => 'Votre plan d\'utilisation des compétences est trop court.',
+            'coaches.required' => 'Veuillez renseigner vos 5 coachs et leurs matières.',
+            'coaches.min' => 'Les informations sur vos coachs sont trop courtes.',
+            'homework_screenshots.required' => 'Veuillez envoyer au moins une capture d\'écran d\'un devoir rendu.',
+            'homework_screenshots.array' => 'Les captures doivent être envoyées sous forme de fichiers images.',
+            'homework_screenshots.min' => 'Veuillez envoyer au moins une capture d\'écran.',
+            'homework_screenshots.max' => 'Vous pouvez envoyer au maximum 6 captures d\'écran.',
+            'homework_screenshots.*.image' => 'Chaque capture doit être une image.',
+            'homework_screenshots.*.mimes' => 'Les captures doivent être au format JPG, PNG ou WEBP.',
+            'homework_screenshots.*.max' => 'Chaque capture ne doit pas dépasser 4 Mo.',
+        ]);
+
+        $existingParticipant = Participant::with(['attestations' => fn ($query) => $query->latest()])
+            ->where('email', $validated['email'])
+            ->first();
+
+        if ($existingParticipant) {
+            $attestation = $existingParticipant->attestations->first();
+
+            if ($attestation) {
+                return back()->withInput()->with('existing_attestation', [
+                    'message' => 'Une attestation existe déjà pour cette adresse email.',
+                    'preview_url' => route('public.attestations.public.preview', $attestation->id),
+                    'download_url' => route('public.attestations.public.download', $attestation->id),
+                    'number' => $attestation->attestation_number,
+                ]);
+            }
+
+            return back()->withInput()->withErrors([
+                'email' => 'Cette adresse email existe déjà dans le système. Votre demande est peut-être déjà en attente de validation.',
+            ]);
+        }
+
+        $paths = [];
+        foreach ($request->file('homework_screenshots', []) as $file) {
+            $paths[] = $file->store('homework_screenshots', 'public');
+        }
+
+        Participant::create([
+            'periode_id' => $periode->id,
+            'civility' => $validated['civility'],
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'city' => $validated['city'],
+            'phone' => $validated['whatsapp'],
+            'whatsapp' => $validated['whatsapp'],
+            'training_group' => $validated['training_group'],
+            'classmates_contacts' => $validated['classmates_contacts'],
+            'course_delivery_explanation' => $validated['course_delivery_explanation'],
+            'technical_skills' => $validated['technical_skills'],
+            'public_speaking_description' => $validated['public_speaking_description'],
+            'ecommerce_steps' => $validated['ecommerce_steps'],
+            'knowledge_use_plan' => $validated['knowledge_use_plan'],
+            'coaches' => $validated['coaches'],
+            'homework_screenshot_paths' => $paths,
+            'is_active' => false,
+            'validation_status' => 'pending',
+            'submitted_at' => now(),
+        ]);
+
+        return back()->with('success', 'Votre demande a bien été envoyée. Elle sera vérifiée avant la génération de votre attestation.');
     }
 
     /**
@@ -36,7 +153,7 @@ class ParticipantController extends Controller
     public function index(Request $request)
     {
         if ($request->ajax()) {
-            $query = Participant::with(['periode', 'attestations']);
+            $query = Participant::with(['periode', 'attestations', 'validatedBy']);
 
             // Filtres
             if ($request->filled('periode_id')) {
@@ -55,13 +172,17 @@ class ParticipantController extends Controller
                 }
             }
 
+            if ($request->filled('validation_status')) {
+                $query->where('validation_status', $request->validation_status);
+            }
+
             if ($request->filled('search')) {
                 $search = $request->search;
                 $query->where(function($q) use ($search) {
                     $q->where('name', 'LIKE', "%{$search}%")
                       ->orWhere('email', 'LIKE', "%{$search}%")
-                      ->orWhere('matricule', 'LIKE', "%{$search}%")
-                      ->orWhere('organisation', 'LIKE', "%{$search}%");
+                      ->orWhere('city', 'LIKE', "%{$search}%")
+                      ->orWhere('training_group', 'LIKE', "%{$search}%");
                 });
             }
 
@@ -88,7 +209,7 @@ class ParticipantController extends Controller
     public function show($id, Request $request)
     {
         try {
-            $participant = Participant::with(['periode', 'attestations'])->findOrFail($id);
+            $participant = Participant::with(['periode', 'attestations', 'validatedBy'])->findOrFail($id);
 
             if ($request->ajax()) {
                 return response()->json([
@@ -119,6 +240,14 @@ class ParticipantController extends Controller
             DB::beginTransaction();
 
             $participant = Participant::create($request->validated());
+
+            if ($participant->validation_status === 'validated' && !$participant->validated_at) {
+                $participant->update([
+                    'validated_at' => now(),
+                    'validated_by' => auth()->id(),
+                    'is_active' => true,
+                ]);
+            }
 
             DB::commit();
 
@@ -159,18 +288,21 @@ class ParticipantController extends Controller
                     Rule::unique('participants')->ignore($participant->id),
                 ],
                 'phone' => 'nullable|string|max:20',
-                // 'matricule' => [
-                //     'nullable',
-                //     'string',
-                //     'max:50',
-                //     Rule::unique('participants')->ignore($participant->id),
-                // ],
-                'organisation' => 'nullable|string|max:255',
-                'fonction' => 'nullable|string|max:255',
+                'whatsapp' => 'nullable|string|max:30',
+                'city' => 'nullable|string|max:255',
+                'civility' => 'nullable|string|max:20',
+                'training_group' => 'nullable|string|max:255',
+                'classmates_contacts' => 'nullable|string',
+                'course_delivery_explanation' => 'nullable|string',
+                'technical_skills' => 'nullable|string',
+                'public_speaking_description' => 'nullable|string',
+                'ecommerce_steps' => 'nullable|string',
+                'knowledge_use_plan' => 'nullable|string',
+                'coaches' => 'nullable|string',
+                'validation_status' => 'nullable|in:pending,validated,rejected',
                 'is_active' => 'boolean',
             ], [
                 'email.unique' => 'Cet email est déjà utilisé.',
-                'matricule.unique' => 'Ce matricule est déjà utilisé.',
             ]);
 
             if ($validator->fails()) {
@@ -181,7 +313,15 @@ class ParticipantController extends Controller
                 ], 422);
             }
 
-            $participant->update($validator->validated());
+            $data = $validator->validated();
+
+            if (($data['validation_status'] ?? $participant->validation_status) === 'validated') {
+                $data['validated_at'] = $participant->validated_at ?: now();
+                $data['validated_by'] = $participant->validated_by ?: auth()->id();
+                $data['is_active'] = $data['is_active'] ?? true;
+            }
+
+            $participant->update($data);
 
             DB::commit();
 
@@ -253,6 +393,58 @@ class ParticipantController extends Controller
                 'message' => 'Erreur lors de la mise à jour du statut.'
             ], 500);
         }
+    }
+
+    public function validateParticipant($id)
+    {
+        $participant = Participant::findOrFail($id);
+
+        $participant->update([
+            'validation_status' => 'validated',
+            'is_active' => true,
+            'validated_at' => now(),
+            'validated_by' => auth()->id(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Participant validé avec succès.',
+            'data' => $participant->fresh(['periode', 'attestations', 'validatedBy'])
+        ]);
+    }
+
+    public function bulkValidate(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'participant_ids' => 'required|array|min:1',
+            'participant_ids.*' => 'exists:participants,id',
+        ], [
+            'participant_ids.required' => 'Veuillez sélectionner au moins un participant.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur de validation',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $count = Participant::whereIn('id', $request->participant_ids)
+            ->where('validation_status', 'pending')
+            ->update([
+                'validation_status' => 'validated',
+                'is_active' => true,
+                'validated_at' => now(),
+                'validated_by' => auth()->id(),
+                'updated_at' => now(),
+            ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "{$count} participant(s) validé(s) avec succès.",
+            'count' => $count,
+        ]);
     }
 
     /**
@@ -343,9 +535,10 @@ class ParticipantController extends Controller
     public function listByPeriode($periodeId, Request $request)
     {
         try {
-            $query = Participant::select('id', 'name', 'email', 'organisation')
-                ->where('periode_id', $periodeId)
-                ->active();
+        $query = Participant::select('id', 'name', 'email', 'training_group')
+            ->where('periode_id', $periodeId)
+            ->active()
+            ->validated();
 
             // Recherche par terme
             if ($request->has('search') && !empty($request->search)) {
@@ -353,7 +546,7 @@ class ParticipantController extends Controller
                 $query->where(function($q) use ($search) {
                     $q->where('name', 'LIKE', "%{$search}%")
                     ->orWhere('email', 'LIKE', "%{$search}%")
-                    ->orWhere('organisation', 'LIKE', "%{$search}%");
+                    ->orWhere('training_group', 'LIKE', "%{$search}%");
                 });
             }
 
@@ -364,7 +557,7 @@ class ParticipantController extends Controller
                         'id' => $participant->id,
                         'name' => $participant->full_name,
                         'email' => $participant->email,
-                        'organisation' => $participant->organisation,
+                        'training_group' => $participant->training_group,
                         'has_attestation' => $participant->hasAttestation()
                     ];
                 });
@@ -389,7 +582,8 @@ class ParticipantController extends Controller
     {
         $query = Participant::with('periode')
             ->doesntHave('attestations')
-            ->active();
+            ->active()
+            ->validated();
 
         if ($request->filled('periode_id')) {
             $query->where('periode_id', $request->periode_id);
@@ -412,9 +606,9 @@ public function downloadTemplate()
         Log::info('Download template accessed'); // Test logging
 
         $templateData = [
-            ['nom', 'email', 'telephone', 'matricule', 'organisation', 'fonction'],
-            ['John Doe', 'john.doe@example.com', '+1234567890', 'MAT001', 'Entreprise ABC', 'Manager'],
-            ['Jane Smith', 'jane.smith@example.com', '+0987654321', 'MAT002', 'Société XYZ', 'Développeur'],
+            ['nom', 'email', 'telephone', 'ville', 'whatsapp', 'groupe_de_formation'],
+            ['John Doe', 'john.doe@example.com', '+237690000000', 'Yaoundé', '+237690000000', 'Groupe A'],
+            ['Jane Smith', 'jane.smith@example.com', '+237691111111', 'Douala', '+237691111111', 'Groupe B'],
         ];
 
         $filename = 'template_import_participants_' . date('Y-m-d') . '.xlsx';

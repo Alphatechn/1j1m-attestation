@@ -145,11 +145,11 @@ $(document).ready(function() {
             </div>
         </div>
 
-        ${participant.organisation ? `
+        ${participant.training_group ? `
         <div class="row mb-3">
             <div class="col-12">
-                <strong>Organisation:</strong><br>
-                ${participant.organisation}
+                <strong>Groupe de formation:</strong><br>
+                ${participant.training_group}
             </div>
         </div>
         ` : ''}

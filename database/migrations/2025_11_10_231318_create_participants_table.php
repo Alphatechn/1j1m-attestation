@@ -14,9 +14,6 @@ return new class extends Migration
             $table->string('name');
             $table->string('email')->nullable();
             $table->string('phone')->nullable();
-            $table->string('matricule')->nullable()->unique(); // Numéro d'identification
-            $table->string('organisation')->nullable();
-            $table->string('fonction')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
             $table->softDeletes();

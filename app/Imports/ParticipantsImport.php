@@ -26,11 +26,13 @@ class ParticipantsImport implements ToModel, WithHeadingRow, WithValidation
             'name' => $row['nom'] ?? $row['name'] ?? null,
             'email' => $row['email'] ?? null,
             'phone' => $this->convertToString($row['telephone'] ?? $row['phone'] ?? null),
-            'matricule' => $row['matricule'] ?? null,
-            'organisation' => $row['organisation'] ?? null,
-            'fonction' => $row['fonction'] ?? $row['fonction'] ?? null,
+            'city' => $row['ville'] ?? $row['city'] ?? null,
+            'whatsapp' => $this->convertToString($row['whatsapp'] ?? null),
+            'training_group' => $row['groupe_de_formation'] ?? $row['training_group'] ?? null,
             'periode_id' => $this->periodeId,
             'is_active' => true,
+            'validation_status' => 'validated',
+            'validated_at' => now(),
         ];
 
         $this->importedCount++;
@@ -42,10 +44,10 @@ class ParticipantsImport implements ToModel, WithHeadingRow, WithValidation
         return [
             'nom' => 'required|string|max:255',
             'email' => 'nullable|email|unique:participants,email,NULL,id,periode_id,' . $this->periodeId,
-            'matricule' => 'nullable|string|unique:participants,matricule,NULL,id,periode_id,' . $this->periodeId,
             'telephone' => 'nullable|max:20',
-            'organisation' => 'nullable|string|max:255',
-            'fonction' => 'nullable|string|max:255',
+            'ville' => 'nullable|string|max:255',
+            'whatsapp' => 'nullable|max:30',
+            'groupe_de_formation' => 'nullable|string|max:255',
         ];
     }
 
@@ -54,7 +56,6 @@ class ParticipantsImport implements ToModel, WithHeadingRow, WithValidation
         return [
             'nom.required' => 'Le nom est requis',
             'email.unique' => 'Cet email existe déjà pour cette période',
-            'matricule.unique' => 'Ce matricule existe déjà pour cette période',
         ];
     }
 

@@ -98,8 +98,8 @@
                                                 <span id="participantEmail">-</span>
                                             </div>
                                             <div class="col-md-4">
-                                                <strong><i class="bi bi-building"></i> Organisation:</strong>
-                                                <span id="participantOrganisation">-</span>
+                                                <strong><i class="bi bi-people"></i> Groupe:</strong>
+                                                <span id="participantTrainingGroup">-</span>
                                             </div>
                                         </div>
                                     </div>
@@ -1099,7 +1099,7 @@ function formatParticipantResult(participant) {
 
     if (participant.element && participant.element.dataset) {
         const email = participant.element.dataset.email || '';
-        const organisation = participant.element.dataset.organisation || '';
+        const trainingGroup = participant.element.dataset.trainingGroup || '';
         const hasAttestation = participant.element.dataset.hasAttestation === 'true';
 
         let badge = hasAttestation
@@ -1110,7 +1110,7 @@ function formatParticipantResult(participant) {
             `<div>
                 <div class="fw-bold">${participant.text}</div>
                 <div class="small text-muted">
-                    ${email ? `${email} • ` : ''}${organisation}
+                    ${email ? `${email} • ` : ''}${trainingGroup}
                 </div>
                 ${badge}
             </div>`
@@ -1176,7 +1176,7 @@ $('#single_periode_id').on('change', function() {
                             id: participant.id,
                             text: participant.name,
                             email: participant.email,
-                            organisation: participant.organisation,
+                            trainingGroup: participant.training_group,
                             hasAttestation: participant.has_attestation
                         })),
                         pagination: {
@@ -1211,7 +1211,7 @@ $('#single_participant_id').on('change', function() {
         // Afficher les informations du participant
         $('#participantName').text(selectedData.text);
         $('#participantEmail').text(selectedData.email || 'Aucun email');
-        $('#participantOrganisation').text(selectedData.organisation || 'Non renseigné');
+        $('#participantTrainingGroup').text(selectedData.trainingGroup || 'Non renseigné');
         $('#participantInfo').removeClass('d-none');
 
         // Avertissement si attestation existe déjà

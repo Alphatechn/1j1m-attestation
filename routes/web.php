@@ -39,6 +39,12 @@ Route::name('public.')->group(function () {
     Route::post('/search-by-number', [AttestationController::class, 'searchByNumber'])
          ->name('search-by-number.post');
 
+    // Demande publique de validation pour obtenir une attestation
+    Route::get('/demande-attestation', [ParticipantController::class, 'publicForm'])
+         ->name('participants.request');
+    Route::post('/demande-attestation', [ParticipantController::class, 'publicSubmit'])
+         ->name('participants.request.store');
+
     // Routes publiques de téléchargement
     Route::get('/public-download/{id}', [AttestationController::class, 'publicDownload'])
          ->name('attestations.public.download');
@@ -122,6 +128,8 @@ Route::middleware(['auth'])->group(function () {
         Route::put('/{id}', [ParticipantController::class, 'update'])->name('update');
         Route::delete('/{id}', [ParticipantController::class, 'destroy'])->name('destroy');
         Route::patch('/{id}/toggle-status', [ParticipantController::class, 'toggleStatus'])->name('toggle-status');
+        Route::patch('/{id}/validate', [ParticipantController::class, 'validateParticipant'])->name('validate');
+        Route::post('/bulk-validate', [ParticipantController::class, 'bulkValidate'])->name('bulk-validate');
 
         // Fonctionnalités supplémentaires
         Route::get('/periode/{periodeId}/list', [ParticipantController::class, 'listByPeriode'])->name('by-periode');

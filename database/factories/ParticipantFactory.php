@@ -14,14 +14,14 @@ class ParticipantFactory extends Factory
     {
         return [
             'periode_id' => Periode::factory(),
-            'first_name' => $this->faker->firstName(),
-            'last_name' => $this->faker->lastName(),
+            'name' => $this->faker->name(),
             'email' => $this->faker->unique()->safeEmail(),
             'phone' => $this->faker->optional()->phoneNumber(),
-            'matricule' => $this->faker->optional()->unique()->numerify('MAT-####-####'),
-            'organisation' => $this->faker->optional()->company(),
-            'fonction' => $this->faker->optional()->jobTitle(),
+            'city' => $this->faker->optional()->city(),
+            'whatsapp' => $this->faker->optional()->phoneNumber(),
+            'training_group' => $this->faker->optional()->word(),
             'is_active' => $this->faker->boolean(90),
+            'validation_status' => 'validated',
         ];
     }
 

@@ -236,6 +236,13 @@ class AttestationController extends Controller
         try {
             $participant = Participant::findOrFail($request->participant_id);
 
+            if (!$participant->is_active || $participant->validation_status !== 'validated') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Ce participant doit être validé avant la génération de son attestation.'
+                ], 422);
+            }
+
             // Vérifier attestation existante
             $existing = Attestation::where('participant_id', $participant->id)
                 ->where('periode_id', $participant->periode_id)
@@ -387,6 +394,8 @@ class AttestationController extends Controller
             // Récupérer les participants
             $query = Participant::whereDoesntHave('attestations')
                 ->whereNotNull('email')
+                ->active()
+                ->validated()
                 ->where('periode_id', $request->periode_id);
 
             if ($request->filled('participant_ids')) {

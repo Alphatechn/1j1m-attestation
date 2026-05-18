@@ -39,7 +39,7 @@
 
                 <!-- Modal Ajout Participant -->
                 <div class="modal fade" id="participantModal" tabindex="-1" aria-labelledby="participantModalLabel" aria-hidden="true">
-                    <div class="modal-dialog modal-lg">
+                    <div class="modal-dialog modal-xl modal-dialog-scrollable">
                         <div class="modal-content">
                             <div class="modal-header bg-primary text-white">
                                 <h5 class="modal-title" id="participantModalLabel">
@@ -87,17 +87,20 @@
                                     </div>
 
                                     <div class="row">
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Organisation</label>
-                                            <input type="text" id="organisation" name="organisation" class="form-control"
-                                                   placeholder="Entreprise ou organisation">
-                                            <span id="error_organisation" class="text-danger small"></span>
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label">Ville</label>
+                                            <input type="text" id="city" name="city" class="form-control" placeholder="Ville">
+                                            <span id="error_city" class="text-danger small"></span>
                                         </div>
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Fonction</label>
-                                            <input type="text" id="fonction" name="fonction" class="form-control"
-                                                   placeholder="Poste ou fonction">
-                                            <span id="error_fonction" class="text-danger small"></span>
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label">WhatsApp</label>
+                                            <input type="text" id="whatsapp" name="whatsapp" class="form-control" placeholder="+237 6 XX XX XX XX">
+                                            <span id="error_whatsapp" class="text-danger small"></span>
+                                        </div>
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label">Groupe de formation</label>
+                                            <input type="text" id="training_group" name="training_group" class="form-control" placeholder="Groupe A">
+                                            <span id="error_training_group" class="text-danger small"></span>
                                         </div>
                                     </div>
 
@@ -165,15 +168,20 @@
                                     </div>
 
                                     <div class="row">
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Organisation</label>
-                                            <input type="text" id="edit_organisation" name="organisation" class="form-control">
-                                            <span id="error_edit_organisation" class="text-danger small"></span>
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label">Ville</label>
+                                            <input type="text" id="edit_city" name="city" class="form-control">
+                                            <span id="error_edit_city" class="text-danger small"></span>
                                         </div>
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Fonction</label>
-                                            <input type="text" id="edit_fonction" name="fonction" class="form-control">
-                                            <span id="error_edit_fonction" class="text-danger small"></span>
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label">WhatsApp</label>
+                                            <input type="text" id="edit_whatsapp" name="whatsapp" class="form-control">
+                                            <span id="error_edit_whatsapp" class="text-danger small"></span>
+                                        </div>
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label">Groupe de formation</label>
+                                            <input type="text" id="edit_training_group" name="training_group" class="form-control">
+                                            <span id="error_edit_training_group" class="text-danger small"></span>
                                         </div>
                                     </div>
 
@@ -218,10 +226,6 @@
                                                 <td><span id="view_periode"></span></td>
                                             </tr>
                                             <tr>
-                                                <th>Matricule:</th>
-                                                <td><span id="view_matricule"></span></td>
-                                            </tr>
-                                            <tr>
                                                 <th>Email:</th>
                                                 <td><span id="view_email"></span></td>
                                             </tr>
@@ -230,12 +234,20 @@
                                                 <td><span id="view_phone"></span></td>
                                             </tr>
                                             <tr>
-                                                <th>Organisation:</th>
-                                                <td><span id="view_organisation"></span></td>
+                                                <th>Ville:</th>
+                                                <td><span id="view_city"></span></td>
                                             </tr>
                                             <tr>
-                                                <th>Fonction:</th>
-                                                <td><span id="view_fonction"></span></td>
+                                                <th>WhatsApp:</th>
+                                                <td><span id="view_whatsapp"></span></td>
+                                            </tr>
+                                            <tr>
+                                                <th>Groupe de formation:</th>
+                                                <td><span id="view_training_group"></span></td>
+                                            </tr>
+                                            <tr>
+                                                <th>Validation:</th>
+                                                <td><span id="view_validation_status"></span></td>
                                             </tr>
                                             <tr>
                                                 <th>Statut:</th>
@@ -254,6 +266,12 @@
                                                 <td><span id="view_updated_at"></span></td>
                                             </tr>
                                         </table>
+                                        <div class="mt-4">
+                                            <h6 class="fw-bold mb-3">
+                                                <i class="bi bi-images me-1"></i> Captures de devoirs
+                                            </h6>
+                                            <div id="view_homework_screenshots" class="homework-gallery"></div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -326,7 +344,7 @@
                                     <div class="alert alert-info">
                                         <i class="bi bi-info-circle"></i>
                                         <strong>Information:</strong> Le fichier doit contenir les colonnes:
-                                        Prénom, Nom, Email, Téléphone, Matricule, Organisation, Fonction
+                                        Nom, Email, Téléphone, Ville, WhatsApp, Groupe de formation
                                     </div>
                                 </form>
                             </div>
@@ -358,6 +376,9 @@
                                 <button class="btn btn-light btn-sm me-2" id="exportBtn">
                                     <i class="bi bi-download"></i> Exporter
                                 </button>
+                                <button class="btn btn-warning btn-sm me-2" id="bulkValidateBtn" disabled>
+                                    <i class="bi bi-check2-square"></i> Valider sélection
+                                </button>
                                 <button class="btn btn-light btn-sm" data-bs-toggle="modal" data-bs-target="#participantModal">
                                     <i class="bi bi-person-plus"></i> Nouveau
                                 </button>
@@ -367,7 +388,7 @@
                         <div class="card-body">
                             <!-- Filtres -->
                             <div class="row mb-3">
-                                <div class="col-md-4">
+                                <div class="col-md-3">
                                     <label class="form-label">Filtrer par période:</label>
                                     <select id="filter_periode" class="form-select form-select-sm">
                                         <option value="">Toutes les périodes</option>
@@ -376,7 +397,7 @@
                                         @endforeach
                                     </select>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-3">
                                     <label class="form-label">Statut:</label>
                                     <select id="filter_status" class="form-select form-select-sm">
                                         <option value="">Tous les statuts</option>
@@ -384,12 +405,21 @@
                                         <option value="0">Inactifs</option>
                                     </select>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-3">
                                     <label class="form-label">Attestation:</label>
                                     <select id="filter_attestation" class="form-select form-select-sm">
                                         <option value="">Tous</option>
                                         <option value="1">Avec attestation</option>
                                         <option value="0">Sans attestation</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Validation:</label>
+                                    <select id="filter_validation" class="form-select form-select-sm">
+                                        <option value="">Toutes</option>
+                                        <option value="pending">En attente</option>
+                                        <option value="validated">Validés</option>
+                                        <option value="rejected">Rejetés</option>
                                     </select>
                                 </div>
                             </div>
@@ -399,12 +429,13 @@
                                     <thead class="table-dark">
                                         <tr>
                                             <th width="5%">N°</th>
+                                            <th width="4%" class="text-center"><input type="checkbox" id="selectAllParticipants"></th>
                                             <th width="20%">Participant</th>
                                             <th width="15%">Période</th>
                                             <th width="15%">Contact</th>
-                                            <th width="15%">Organisation</th>
+                                            <th width="15%">Groupe / Ville</th>
                                             <th width="10%" class="text-center">Attestations</th>
-                                            <th width="10%" class="text-center">Statut</th>
+                                            <th width="10%" class="text-center">Validation</th>
                                             <th width="15%" class="text-center">Actions</th>
                                         </tr>
                                     </thead>
@@ -426,6 +457,86 @@
 <style>
 .badges-container .badge {
     margin: 2px;
+}
+
+.homework-gallery {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    max-width: 100%;
+}
+
+.homework-shot {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+    transition: transform .2s ease, box-shadow .2s ease;
+}
+
+.homework-shot:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 18px rgba(0,0,0,.12);
+}
+
+.homework-shot img {
+    aspect-ratio: 4 / 3;
+    display: block;
+    object-fit: cover;
+    width: 100%;
+    max-height: 260px;
+}
+
+.homework-shot span {
+    display: block;
+    font-size: .78rem;
+    padding: 8px;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+    #participantViewModal .modal-dialog {
+        margin: .5rem;
+        max-width: calc(100% - 1rem);
+    }
+
+    #participantViewModal .modal-body {
+        padding: 1rem;
+    }
+
+    #participantViewModal table,
+    #participantViewModal tbody,
+    #participantViewModal tr,
+    #participantViewModal th,
+    #participantViewModal td {
+        display: block;
+        width: 100%;
+    }
+
+    #participantViewModal th {
+        padding-bottom: .15rem;
+    }
+
+    #participantViewModal td {
+        padding-top: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .homework-gallery {
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    }
+}
+
+@media (max-width: 420px) {
+    .homework-gallery {
+        grid-template-columns: 1fr;
+    }
+
+    .homework-shot img {
+        aspect-ratio: 16 / 10;
+        max-height: none;
+    }
 }
 </style>
 @endsection
@@ -474,7 +585,7 @@ function initializeDataTable() {
                     errorMessage = xhr.responseJSON.message;
                 }
                 $('#participantsTable tbody').html(
-                    `<tr><td colspan="8" class="text-center text-danger">${errorMessage}</td></tr>`
+                    `<tr><td colspan="9" class="text-center text-danger">${errorMessage}</td></tr>`
                 );
             }
         },
@@ -490,13 +601,19 @@ function initializeDataTable() {
             {
                 data: null,
                 render: function(data) {
+                    const disabled = data.validation_status === 'validated' ? 'disabled' : '';
+                    return `<input type="checkbox" class="participant-select" value="${data.id}" ${disabled}>`;
+                },
+                className: 'text-center',
+                orderable: false
+            },
+            {
+                data: null,
+                render: function(data) {
                     // Gestion des participants sans prénom
                     const displayName =  data.name ? data.name : '<span class="text-muted">Non renseigné</span>';
 
                     let info = `<strong>${displayName}</strong>`;
-                    if (data.matricule) {
-                        info += `<br><small class="text-muted">${data.matricule}</small>`;
-                    }
                     return info;
                 }
             },
@@ -516,6 +633,9 @@ function initializeDataTable() {
                     if (data.phone) {
                         contact += `<div><i class="bi bi-phone"></i> ${data.phone}</div>`;
                     }
+                    if (data.whatsapp && data.whatsapp !== data.phone) {
+                        contact += `<div><i class="bi bi-whatsapp"></i> ${data.whatsapp}</div>`;
+                    }
                     return contact || '<span class="text-muted">Aucun contact</span>';
                 }
             },
@@ -523,11 +643,11 @@ function initializeDataTable() {
                 data: null,
                 render: function(data) {
                     let orgInfo = '';
-                    if (data.organisation) {
-                        orgInfo += `<strong>${data.organisation}</strong>`;
+                    if (data.training_group) {
+                        orgInfo += `<strong>${data.training_group}</strong>`;
                     }
-                    if (data.fonction) {
-                        orgInfo += orgInfo ? `<br><small>${data.fonction}</small>` : data.fonction;
+                    if (data.city) {
+                        orgInfo += orgInfo ? `<br><small>${data.city}</small>` : data.city;
                     }
                     return orgInfo || '<span class="text-muted">Non renseigné</span>';
                 }
@@ -555,11 +675,15 @@ function initializeDataTable() {
                 className: 'text-center'
             },
             {
-                data: 'is_active',
+                data: 'validation_status',
                 render: function(data) {
-                    return data
-                        ? '<span class="badge bg-success"><i class="bi bi-check-circle"></i> Actif</span>'
-                        : '<span class="badge bg-secondary"><i class="bi bi-x-circle"></i> Inactif</span>';
+                    if (data === 'validated') {
+                        return '<span class="badge bg-success"><i class="bi bi-check-circle"></i> Validé</span>';
+                    }
+                    if (data === 'rejected') {
+                        return '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> Rejeté</span>';
+                    }
+                    return '<span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split"></i> En attente</span>';
                 },
                 className: 'text-center'
             },
@@ -578,6 +702,9 @@ function initializeDataTable() {
                     const deleteBtn = hasAttestations
                         ? '<button class="btn btn-danger btn-sm" disabled title="' + deleteTitle + '"><i class="bi bi-trash"></i></button>'
                         : `<button class="btn btn-danger btn-sm delete-btn" data-id="${data}" title="${deleteTitle}"><i class="bi bi-trash"></i></button>`;
+                    const validateBtn = row.validation_status === 'pending'
+                        ? `<button class="btn btn-success btn-sm validate-btn" data-id="${data}" title="Valider"><i class="bi bi-check2-circle"></i></button>`
+                        : '';
 
                     return `
                         <div class="btn-group btn-group-sm" role="group">
@@ -588,6 +715,7 @@ function initializeDataTable() {
                                 <i class="bi bi-pencil"></i>
                             </button>
                             ${deleteBtn}
+                            ${validateBtn}
                             <button class="btn btn-success toggle-status-btn" data-id="${data}"
                                     data-status="${row.is_active}" title="Changer statut">
                                 <i class="bi bi-arrow-repeat"></i>
@@ -605,7 +733,7 @@ function initializeDataTable() {
     });
 
     // Appliquer les filtres
-    $('#filter_periode, #filter_status, #filter_attestation').on('change', function() {
+    $('#filter_periode, #filter_status, #filter_attestation, #filter_validation').on('change', function() {
         applyFilters();
     });
 }
@@ -649,10 +777,44 @@ function initializeDataTable() {
         });
     }
 
+    function escapeHtml(value) {
+        return $('<div>').text(value || '').html();
+    }
+
+    function renderHomeworkScreenshots(paths) {
+        const gallery = $('#view_homework_screenshots');
+        gallery.empty();
+
+        if (!Array.isArray(paths) || paths.length === 0) {
+            gallery.html(`
+                <div class="alert alert-light border mb-0">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Aucune capture envoyée par ce participant.
+                </div>
+            `);
+            return;
+        }
+
+        const html = paths.map((path, index) => {
+            const cleanPath = escapeHtml(path);
+            const imageUrl = `/storage/${cleanPath}`;
+
+            return `
+                <a href="${imageUrl}" target="_blank" class="homework-shot text-decoration-none text-dark">
+                    <img src="${imageUrl}" alt="Capture de devoir ${index + 1}">
+                    <span><i class="bi bi-box-arrow-up-right me-1"></i>Capture ${index + 1}</span>
+                </a>
+            `;
+        }).join('');
+
+        gallery.html(html);
+    }
+
     function applyFilters() {
         const periode = $('#filter_periode').val();
         const status = $('#filter_status').val();
         const attestation = $('#filter_attestation').val();
+        const validation = $('#filter_validation').val();
 
         let url = '/participants?';
         const params = [];
@@ -660,6 +822,7 @@ function initializeDataTable() {
         if (periode) params.push(`periode_id=${periode}`);
         if (status) params.push(`is_active=${status}`);
         if (attestation) params.push(`has_attestation=${attestation}`);
+        if (validation) params.push(`validation_status=${validation}`);
 
         if (params.length > 0) {
             url += params.join('&');
@@ -667,6 +830,92 @@ function initializeDataTable() {
 
         dataTable.ajax.url(url).load();
     }
+
+    function getSelectedParticipantIds() {
+        return $('.participant-select:checked').map(function() {
+            return $(this).val();
+        }).get();
+    }
+
+    function refreshBulkValidateButton() {
+        $('#bulkValidateBtn').prop('disabled', getSelectedParticipantIds().length === 0);
+    }
+
+    $(document).on('change', '.participant-select', refreshBulkValidateButton);
+
+    $('#selectAllParticipants').on('change', function() {
+        $('.participant-select:not(:disabled)').prop('checked', $(this).is(':checked'));
+        refreshBulkValidateButton();
+    });
+
+    $(document).on('click', '.validate-btn', function() {
+        const participantId = $(this).data('id');
+
+        Swal.fire({
+            title: 'Valider ce participant ?',
+            text: 'Il pourra ensuite recevoir une attestation.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Valider',
+            cancelButtonText: 'Annuler'
+        }).then((result) => {
+            if (!result.isConfirmed) return;
+
+            showSpinner();
+            $.ajax({
+                url: `/participants/${participantId}/validate`,
+                method: 'POST',
+                data: {_method: 'PATCH'},
+                success: function(response) {
+                    hideSpinner();
+                    dataTable.ajax.reload();
+                    showToast(response.message, 'success');
+                },
+                error: function(xhr) {
+                    hideSpinner();
+                    showToast(xhr.responseJSON?.message || 'Erreur lors de la validation', 'error');
+                }
+            });
+        });
+    });
+
+    $('#bulkValidateBtn').on('click', function() {
+        const ids = getSelectedParticipantIds();
+
+        if (!ids.length) {
+            showToast('Veuillez sélectionner au moins un participant', 'error');
+            return;
+        }
+
+        Swal.fire({
+            title: 'Validation multiple',
+            text: `Valider ${ids.length} participant(s) sélectionné(s) ?`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Valider',
+            cancelButtonText: 'Annuler'
+        }).then((result) => {
+            if (!result.isConfirmed) return;
+
+            showSpinner();
+            $.ajax({
+                url: '/participants/bulk-validate',
+                method: 'POST',
+                data: {participant_ids: ids},
+                success: function(response) {
+                    hideSpinner();
+                    $('#selectAllParticipants').prop('checked', false);
+                    $('#bulkValidateBtn').prop('disabled', true);
+                    dataTable.ajax.reload();
+                    showToast(response.message, 'success');
+                },
+                error: function(xhr) {
+                    hideSpinner();
+                    showToast(xhr.responseJSON?.message || 'Erreur lors de la validation multiple', 'error');
+                }
+            });
+        });
+    });
 
     // ============= AJOUT DE PARTICIPANT =============
 
@@ -679,9 +928,9 @@ function initializeDataTable() {
         formData.append('name', $('#name').val());
         formData.append('email', $('#email').val());
         formData.append('phone', $('#phone').val());
-        formData.append('matricule', $('#matricule').val());
-        formData.append('organisation', $('#organisation').val());
-        formData.append('fonction', $('#fonction').val());
+        formData.append('city', $('#city').val());
+        formData.append('whatsapp', $('#whatsapp').val());
+        formData.append('training_group', $('#training_group').val());
         formData.append('is_active', $('#is_active').is(':checked') ? 1 : 0);
 
         $.ajax({
@@ -728,17 +977,23 @@ function initializeDataTable() {
 
                     $('#view_full_name').text(fullName);
                     $('#view_periode').text(participant.periode ? participant.periode.libelle : 'N/A');
-                    $('#view_matricule').text(participant.matricule || 'Non renseigné');
                     $('#view_email').text(participant.email || 'Non renseigné');
                     $('#view_phone').text(participant.phone || 'Non renseigné');
-                    $('#view_organisation').text(participant.organisation || 'Non renseigné');
-                    $('#view_fonction').text(participant.fonction || 'Non renseigné');
+                    $('#view_city').text(participant.city || 'Non renseigné');
+                    $('#view_whatsapp').text(participant.whatsapp || 'Non renseigné');
+                    $('#view_training_group').text(participant.training_group || 'Non renseigné');
+                    $('#view_validation_status').html(participant.validation_status === 'validated'
+                        ? '<span class="badge bg-success">Validé</span>'
+                        : (participant.validation_status === 'rejected'
+                            ? '<span class="badge bg-danger">Rejeté</span>'
+                            : '<span class="badge bg-warning text-dark">En attente</span>'));
                     $('#view_status').html(participant.is_active
                         ? '<span class="badge bg-success">Actif</span>'
                         : '<span class="badge bg-secondary">Inactif</span>');
                     $('#view_attestations_count').text(participant.attestations_count || 0);
                     $('#view_created_at').text(new Date(participant.created_at).toLocaleDateString('fr-FR'));
                     $('#view_updated_at').text(new Date(participant.updated_at).toLocaleDateString('fr-FR'));
+                    renderHomeworkScreenshots(participant.homework_screenshot_paths);
 
                     $('#participantViewModal').modal('show');
                 }
@@ -769,9 +1024,9 @@ function initializeDataTable() {
                     $('#edit_name').val(participant.name);
                     $('#edit_email').val(participant.email || '');
                     $('#edit_phone').val(participant.phone || '');
-                    $('#edit_matricule').val(participant.matricule || '');
-                    $('#edit_organisation').val(participant.organisation || '');
-                    $('#edit_fonction').val(participant.fonction || '');
+                    $('#edit_city').val(participant.city || '');
+                    $('#edit_whatsapp').val(participant.whatsapp || '');
+                    $('#edit_training_group').val(participant.training_group || '');
                     $('#edit_is_active').prop('checked', participant.is_active);
 
                     $('#participantEditModal').modal('show');
@@ -797,9 +1052,9 @@ function initializeDataTable() {
         formData.append('name', $('#edit_name').val());
         formData.append('email', $('#edit_email').val());
         formData.append('phone', $('#edit_phone').val());
-        formData.append('matricule', $('#edit_matricule').val());
-        formData.append('organisation', $('#edit_organisation').val());
-        formData.append('fonction', $('#edit_fonction').val());
+        formData.append('city', $('#edit_city').val());
+        formData.append('whatsapp', $('#edit_whatsapp').val());
+        formData.append('training_group', $('#edit_training_group').val());
         formData.append('is_active', $('#edit_is_active').is(':checked') ? 1 : 0);
 
         $.ajax({

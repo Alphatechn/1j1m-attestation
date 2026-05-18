@@ -42,17 +42,17 @@
                                     {{ $attestation->issue_date->format('d/m/Y') }}
                                 </div>
 
-                                @if($participant->organisation)
+                                @if($participant->training_group)
                                 <div class="mb-3">
-                                    <strong class="text-primary">Organisation:</strong><br>
-                                    {{ $participant->organisation }}
+                                    <strong class="text-primary">Groupe de formation:</strong><br>
+                                    {{ $participant->training_group }}
                                 </div>
                                 @endif
                             </div>
 
                             <div class="col-md-4 text-center">
-                                <div class="bg-light p-3 rounded">
-                                    <i class="bi bi-qr-code" style="font-size: 6rem; color: #2563eb;"></i>
+                                <div class="bg-light p-3 rounded qr-verified-box">
+                                    <i class="bi bi-qr-code"></i>
                                     <p class="small text-muted mt-2">QR Code vérifié</p>
                                 </div>
                             </div>
@@ -92,4 +92,27 @@
         </div>
     </div>
 </div>
+@endsection
+
+@section('styles')
+<style>
+    .qr-verified-box i {
+        color: #2563eb;
+        font-size: clamp(4rem, 16vw, 6rem);
+    }
+
+    @media (max-width: 768px) {
+        .attestation-card {
+            padding: 1rem !important;
+        }
+
+        .attestation-card h4 {
+            font-size: 1.15rem;
+        }
+
+        .text-center.p-5 {
+            padding: 1.5rem !important;
+        }
+    }
+</style>
 @endsection
