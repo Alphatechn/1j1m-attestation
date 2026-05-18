@@ -114,27 +114,27 @@
 
             <div class="row g-3">
                 <div class="col-12">
-                    <label class="form-label">Comment les cours sont dispensés à 1J1M ? <span class="text-danger">*</span></label>
+                    <label class="form-label">Décris de manière détaillée comment étaient dispensés les cours à 1J1M <span class="text-danger">*</span></label>
                     <textarea name="course_delivery_explanation" rows="4" class="form-control @error('course_delivery_explanation') is-invalid @enderror" required>{{ old('course_delivery_explanation') }}</textarea>
                     @error('course_delivery_explanation')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
                 <div class="col-12">
-                    <label class="form-label">Compétences techniques acquises ou renforcées <span class="text-danger">*</span></label>
+                    <label class="form-label">Concrètement, qu'est-ce que tu sais faire de nouveau aujourd'hui grâce à ta formation ? <span class="text-danger">*</span></label>
                     <textarea name="technical_skills" rows="4" class="form-control @error('technical_skills') is-invalid @enderror" required>{{ old('technical_skills') }}</textarea>
                     @error('technical_skills')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
                 <div class="col-12">
-                    <label class="form-label">Art oratoire: structure et techniques d'attention <span class="text-danger">*</span></label>
+                    <label class="form-label">S'agissant de l'art oratoire, Comment captiver ton Public lors de ta prise de parole ? <span class="text-danger">*</span></label>
                     <textarea name="public_speaking_description" rows="4" class="form-control @error('public_speaking_description') is-invalid @enderror" required>{{ old('public_speaking_description') }}</textarea>
                     @error('public_speaking_description')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
                 <div class="col-12">
-                    <label class="form-label">Étapes pour mettre en place une activité e-commerce <span class="text-danger">*</span></label>
+                    <label class="form-label">Quelles sont les étapes clés pour lancer une activité de e-commerce ? <span class="text-danger">*</span></label>
                     <textarea name="ecommerce_steps" rows="4" class="form-control @error('ecommerce_steps') is-invalid @enderror" required>{{ old('ecommerce_steps') }}</textarea>
                     @error('ecommerce_steps')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
                 <div class="col-12">
-                    <label class="form-label">Comment comptez-vous mettre ces compétences à profit ? <span class="text-danger">*</span></label>
+                    <label class="form-label">Comment procéder pour faire désormais connaître ta marque grâce à internet ? <span class="text-danger">*</span></label>
                     <textarea name="knowledge_use_plan" rows="4" class="form-control @error('knowledge_use_plan') is-invalid @enderror" required>{{ old('knowledge_use_plan') }}</textarea>
                     @error('knowledge_use_plan')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
