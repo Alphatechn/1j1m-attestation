@@ -216,7 +216,6 @@ class AttestationService
             define('TCPDF_FONTS_DIR', storage_path('all_font/'));
         }
         $participant = $attestation->participant;
-        $periode = $attestation->periode;
 
         /*
         |--------------------------------------------------------------------------
@@ -226,8 +225,8 @@ class AttestationService
         $pdf = new TCPDF('L', 'mm', 'A4', true, 'UTF-8', false);
 
         // Paramètres du document
-        $pdf->SetCreator('Plateforme Attestations');
-        $pdf->SetAuthor('Système de Gestion');
+        $pdf->SetCreator('Attestations');
+        $pdf->SetAuthor('1J1M');
         $pdf->SetTitle('Attestation - ' . $attestation->attestation_number);
         $pdf->SetSubject('Attestation de participation');
 

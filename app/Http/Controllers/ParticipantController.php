@@ -33,7 +33,8 @@ class ParticipantController extends Controller
 
     public function publicForm()
     {
-        return view('Participants.public-form');
+        $countries = self::getCountryPhoneLengths();
+        return view('Participants.public-form', compact('countries'));
     }
 
     public function publicSubmit(Request $request)
@@ -49,72 +50,131 @@ class ParticipantController extends Controller
             ]);
         }
 
+        $countryPhoneLengths = self::getCountryPhoneLengths();
+
         $validated = $request->validate([
-            'civility' => 'required|string|max:20',
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|max:255',
-            'city' => 'required|string|max:255',
-            'whatsapp' => 'required|string|max:30',
-            'training_group' => 'required|string|max:255',
-            'classmates_contacts' => 'required|string|min:10',
+            'civility'                    => 'required|string|max:20',
+            'name'                        => 'required|string|max:255',
+            'email'                       => 'required|email|max:255',
+            'city'                        => 'required|string|max:255',
+            'whatsapp_country_code'       => ['required', 'string', Rule::in(array_keys($countryPhoneLengths))],
+            'whatsapp_number'             => ['required', 'string', 'regex:/^[0-9]+$/'],
+            'training_group'              => 'required|string|max:255',
+            'classmates_contacts'         => 'required|string|min:10',
             'course_delivery_explanation' => 'required|string|min:20',
-            'technical_skills' => 'required|string|min:20',
+            'technical_skills'            => 'required|string|min:20',
             'public_speaking_description' => 'required|string|min:20',
-            'ecommerce_steps' => 'required|string|min:20',
-            'knowledge_use_plan' => 'required|string|min:20',
-            'coaches' => 'required|string|min:10',
-            'homework_screenshots' => 'required|array|min:1|max:6',
-            'homework_screenshots.*' => 'required|image|mimes:jpg,jpeg,png,webp|max:4096',
+            'ecommerce_steps'             => 'required|string|min:20',
+            'knowledge_use_plan'          => 'required|string|min:20',
+            'coaches'                     => 'required|string|min:10',
+            'homework_screenshots'        => 'required|array|min:1|max:6',
+            'homework_screenshots.*'      => 'required|image|mimes:jpg,jpeg,png,webp|max:4096',
         ], [
-            'civility.required' => 'La civilité est obligatoire.',
-            'name.required' => 'Les noms et prénoms complets sont obligatoires.',
-            'email.required' => 'L\'adresse email est obligatoire.',
-            'email.email' => 'Veuillez renseigner une adresse email valide.',
-            'city.required' => 'La ville est obligatoire.',
-            'whatsapp.required' => 'Le numéro WhatsApp est obligatoire.',
-            'training_group.required' => 'Le groupe de formation est obligatoire.',
-            'classmates_contacts.required' => 'Veuillez renseigner les noms et WhatsApp de 3 camarades.',
-            'classmates_contacts.min' => 'Les informations sur vos camarades sont trop courtes.',
+            'civility.required'                    => 'La civilité est obligatoire.',
+            'name.required'                        => 'Les noms et prénoms complets sont obligatoires.',
+            'email.required'                       => 'L\'adresse email est obligatoire.',
+            'email.email'                          => 'Veuillez renseigner une adresse email valide.',
+            'city.required'                        => 'La ville est obligatoire.',
+            'whatsapp_country_code.required'       => 'Veuillez sélectionner l\'indicatif de votre pays.',
+            'whatsapp_country_code.in'             => 'L\'indicatif du pays sélectionné n\'est pas reconnu.',
+            'whatsapp_number.required'             => 'Le numéro WhatsApp est obligatoire.',
+            'whatsapp_number.regex'                => 'Le numéro WhatsApp ne doit contenir que des chiffres.',
+            'training_group.required'              => 'Le groupe de formation est obligatoire.',
+            'classmates_contacts.required'         => 'Veuillez renseigner les noms et WhatsApp de 3 camarades.',
+            'classmates_contacts.min'              => 'Les informations sur vos camarades sont trop courtes.',
             'course_delivery_explanation.required' => 'Veuillez expliquer comment les cours sont dispensés à 1J1M.',
-            'course_delivery_explanation.min' => 'Votre explication sur le déroulement des cours est trop courte.',
-            'technical_skills.required' => 'Veuillez préciser les compétences techniques acquises.',
-            'technical_skills.min' => 'Votre description des compétences techniques est trop courte.',
+            'course_delivery_explanation.min'      => 'Votre explication sur le déroulement des cours est trop courte.',
+            'technical_skills.required'            => 'Veuillez préciser les compétences techniques acquises.',
+            'technical_skills.min'                 => 'Votre description des compétences techniques est trop courte.',
             'public_speaking_description.required' => 'Veuillez décrire votre méthode actuelle en art oratoire.',
-            'public_speaking_description.min' => 'Votre description en art oratoire est trop courte.',
-            'ecommerce_steps.required' => 'Veuillez décrire les étapes de mise en place d\'une activité e-commerce.',
-            'ecommerce_steps.min' => 'Votre description des étapes e-commerce est trop courte.',
-            'knowledge_use_plan.required' => 'Veuillez expliquer comment vous comptez mettre vos compétences à profit.',
-            'knowledge_use_plan.min' => 'Votre plan d\'utilisation des compétences est trop court.',
-            'coaches.required' => 'Veuillez renseigner vos 5 coachs et leurs matières.',
-            'coaches.min' => 'Les informations sur vos coachs sont trop courtes.',
-            'homework_screenshots.required' => 'Veuillez envoyer au moins une capture d\'écran d\'un devoir rendu.',
-            'homework_screenshots.array' => 'Les captures doivent être envoyées sous forme de fichiers images.',
-            'homework_screenshots.min' => 'Veuillez envoyer au moins une capture d\'écran.',
-            'homework_screenshots.max' => 'Vous pouvez envoyer au maximum 6 captures d\'écran.',
-            'homework_screenshots.*.image' => 'Chaque capture doit être une image.',
-            'homework_screenshots.*.mimes' => 'Les captures doivent être au format JPG, PNG ou WEBP.',
-            'homework_screenshots.*.max' => 'Chaque capture ne doit pas dépasser 4 Mo.',
+            'public_speaking_description.min'      => 'Votre description en art oratoire est trop courte.',
+            'ecommerce_steps.required'             => 'Veuillez décrire les étapes de mise en place d\'une activité e-commerce.',
+            'ecommerce_steps.min'                  => 'Votre description des étapes e-commerce est trop courte.',
+            'knowledge_use_plan.required'          => 'Veuillez expliquer comment vous comptez mettre vos compétences à profit.',
+            'knowledge_use_plan.min'               => 'Votre plan d\'utilisation des compétences est trop court.',
+            'coaches.required'                     => 'Veuillez renseigner vos 5 coachs et leurs matières.',
+            'coaches.min'                          => 'Les informations sur vos coachs sont trop courtes.',
+            'homework_screenshots.required'        => 'Veuillez envoyer au moins une capture d\'écran d\'un devoir rendu.',
+            'homework_screenshots.array'           => 'Les captures doivent être envoyées sous forme de fichiers images.',
+            'homework_screenshots.min'             => 'Veuillez envoyer au moins une capture d\'écran.',
+            'homework_screenshots.max'             => 'Vous pouvez envoyer au maximum 6 captures d\'écran.',
+            'homework_screenshots.*.image'         => 'Chaque capture doit être une image.',
+            'homework_screenshots.*.mimes'         => 'Les captures doivent être au format JPG, PNG ou WEBP.',
+            'homework_screenshots.*.max'           => 'Chaque capture ne doit pas dépasser 4 Mo.',
         ]);
 
-        $existingParticipant = Participant::with(['attestations' => fn ($query) => $query->latest()])
+        // Valider la longueur du numéro local selon le pays
+        $countryConfig = $countryPhoneLengths[$validated['whatsapp_country_code']];
+        $numberLen = strlen($validated['whatsapp_number']);
+        if ($numberLen < $countryConfig['min'] || $numberLen > $countryConfig['max']) {
+            $expected = $countryConfig['min'] === $countryConfig['max']
+                ? "exactement {$countryConfig['min']} chiffres"
+                : "entre {$countryConfig['min']} et {$countryConfig['max']} chiffres";
+            return back()->withInput()->withErrors([
+                'whatsapp_number' => "Le numéro pour {$countryConfig['name']} doit contenir {$expected}.",
+            ]);
+        }
+
+        // Numéro WhatsApp complet avec indicatif (+237691234567) et version chiffres seuls pour la comparaison DB
+        $fullWhatsapp      = '+' . $validated['whatsapp_country_code'] . $validated['whatsapp_number'];
+        $whatsappDigitsOnly = $validated['whatsapp_country_code'] . $validated['whatsapp_number'];
+
+        // Normaliser le nom pour comparaison insensible à la casse
+        $normalizedName = mb_strtolower(trim(preg_replace('/\s+/', ' ', $validated['name'])));
+
+        // Construit le payload renvoyé au formulaire en cas de doublon, avec le statut de la demande existante
+        $buildDuplicatePayload = function (Participant $participant, string $field, string $message): array {
+            $attestation = $participant->attestations->first();
+            $statusLabels = [
+                'pending'   => 'En attente de vérification',
+                'validated' => 'Dossier validé',
+                'rejected'  => 'Demande rejetée',
+            ];
+            return [
+                'field'           => $field,
+                'message'         => $message,
+                'status'          => $participant->validation_status ?? 'pending',
+                'status_label'    => $statusLabels[$participant->validation_status ?? 'pending'] ?? 'Statut inconnu',
+                'submitted_at'    => $participant->submitted_at?->format('d/m/Y à H\hi'),
+                'has_attestation' => $attestation !== null,
+                'number'          => $attestation?->attestation_number,
+                'preview_url'     => $attestation ? route('public.attestations.public.preview', $attestation->id) : null,
+                'download_url'    => $attestation ? route('public.attestations.public.download', $attestation->id) : null,
+            ];
+        };
+
+        // Vérification 1 : email déjà existant
+        $existingByEmail = Participant::with(['attestations' => fn ($q) => $q->latest()])
             ->where('email', $validated['email'])
             ->first();
+        if ($existingByEmail) {
+            return back()->withInput()->with('existing_submission',
+                $buildDuplicatePayload($existingByEmail, 'email', 'Cette adresse email est déjà enregistrée dans le système.')
+            );
+        }
 
-        if ($existingParticipant) {
-            $attestation = $existingParticipant->attestations->first();
+        // Vérification 2 : numéro WhatsApp déjà enregistré (insensible au formatage, tous pays)
+        $existingByWhatsapp = Participant::with(['attestations' => fn ($q) => $q->latest()])
+            ->whereRaw(
+                "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(whatsapp, ' ', ''), '-', ''), '.', ''), '(', ''), ')', ''), '+', '') = ?",
+                [$whatsappDigitsOnly]
+            )
+            ->first();
+        if ($existingByWhatsapp) {
+            return back()->withInput()->with('existing_submission',
+                $buildDuplicatePayload($existingByWhatsapp, 'whatsapp_number', 'Ce numéro WhatsApp est déjà enregistré dans le système.')
+            );
+        }
 
-            if ($attestation) {
-                return back()->withInput()->with('existing_attestation', [
-                    'message' => 'Une attestation existe déjà pour cette adresse email.',
-                    'preview_url' => route('public.attestations.public.preview', $attestation->id),
-                    'download_url' => route('public.attestations.public.download', $attestation->id),
-                    'number' => $attestation->attestation_number,
-                ]);
-            }
-
-            return back()->withInput()->withErrors([
-                'email' => 'Cette adresse email existe déjà dans le système. Votre demande est peut-être déjà en attente de validation.',
-            ]);
+        // Vérification 3 : nom identique dans la même période (insensible à la casse)
+        $existingByName = Participant::with(['attestations' => fn ($q) => $q->latest()])
+            ->whereRaw('LOWER(TRIM(name)) = ?', [$normalizedName])
+            ->where('periode_id', $periode->id)
+            ->first();
+        if ($existingByName) {
+            return back()->withInput()->with('existing_submission',
+                $buildDuplicatePayload($existingByName, 'name', 'Ce nom est déjà enregistré pour la période en cours.')
+            );
         }
 
         $paths = [];
@@ -123,28 +183,53 @@ class ParticipantController extends Controller
         }
 
         Participant::create([
-            'periode_id' => $periode->id,
-            'civility' => $validated['civility'],
-            'name' => $validated['name'],
-            'email' => $validated['email'],
-            'city' => $validated['city'],
-            'phone' => $validated['whatsapp'],
-            'whatsapp' => $validated['whatsapp'],
-            'training_group' => $validated['training_group'],
-            'classmates_contacts' => $validated['classmates_contacts'],
+            'periode_id'                  => $periode->id,
+            'civility'                    => $validated['civility'],
+            'name'                        => $validated['name'],
+            'email'                       => $validated['email'],
+            'city'                        => $validated['city'],
+            'phone'                       => $fullWhatsapp,
+            'whatsapp'                    => $fullWhatsapp,
+            'training_group'              => $validated['training_group'],
+            'classmates_contacts'         => $validated['classmates_contacts'],
             'course_delivery_explanation' => $validated['course_delivery_explanation'],
-            'technical_skills' => $validated['technical_skills'],
+            'technical_skills'            => $validated['technical_skills'],
             'public_speaking_description' => $validated['public_speaking_description'],
-            'ecommerce_steps' => $validated['ecommerce_steps'],
-            'knowledge_use_plan' => $validated['knowledge_use_plan'],
-            'coaches' => $validated['coaches'],
-            'homework_screenshot_paths' => $paths,
-            'is_active' => false,
-            'validation_status' => 'pending',
-            'submitted_at' => now(),
+            'ecommerce_steps'             => $validated['ecommerce_steps'],
+            'knowledge_use_plan'          => $validated['knowledge_use_plan'],
+            'coaches'                     => $validated['coaches'],
+            'homework_screenshot_paths'   => $paths,
+            'is_active'                   => false,
+            'validation_status'           => 'pending',
+            'submitted_at'                => now(),
         ]);
 
         return back()->with('success', 'Votre demande a bien été envoyée. Elle sera vérifiée avant la génération de votre attestation.');
+    }
+
+    private static function getCountryPhoneLengths(): array
+    {
+        return [
+            '237' => ['name' => 'Cameroun',           'min' => 9,  'max' => 9],
+            '225' => ['name' => "Côte d'Ivoire",       'min' => 10, 'max' => 10],
+            '221' => ['name' => 'Sénégal',             'min' => 9,  'max' => 9],
+            '223' => ['name' => 'Mali',                'min' => 8,  'max' => 8],
+            '224' => ['name' => 'Guinée',              'min' => 9,  'max' => 9],
+            '226' => ['name' => 'Burkina Faso',        'min' => 8,  'max' => 8],
+            '228' => ['name' => 'Togo',                'min' => 8,  'max' => 8],
+            '229' => ['name' => 'Bénin',               'min' => 8,  'max' => 10],
+            '227' => ['name' => 'Niger',               'min' => 8,  'max' => 8],
+            '242' => ['name' => 'Congo-Brazzaville',   'min' => 9,  'max' => 9],
+            '243' => ['name' => 'RD Congo',            'min' => 9,  'max' => 9],
+            '241' => ['name' => 'Gabon',               'min' => 7,  'max' => 8],
+            '235' => ['name' => 'Tchad',               'min' => 8,  'max' => 8],
+            '236' => ['name' => 'Centrafrique',        'min' => 8,  'max' => 8],
+            '240' => ['name' => 'Guinée Équatoriale',  'min' => 9,  'max' => 9],
+            '33'  => ['name' => 'France',              'min' => 9,  'max' => 9],
+            '32'  => ['name' => 'Belgique',            'min' => 9,  'max' => 9],
+            '1'   => ['name' => 'Canada / USA',        'min' => 10, 'max' => 10],
+            '44'  => ['name' => 'Royaume-Uni',         'min' => 10, 'max' => 10],
+        ];
     }
 
     /**
