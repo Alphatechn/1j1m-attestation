@@ -3,40 +3,28 @@ name: Deploy Laravel to Hostinger
 on:
   push:
     branches: [ "main" ]
+  workflow_dispatch: {}
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-
-    - name: Setup PHP
-      uses: shivammathur/setup-php@v2
+    - name: Deploy via SSH
+      uses: appleboy/ssh-action@v1.0.3
       with:
-        php-version: '8.2'
-        extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql
-
-    - name: Install Dependencies
-      run: |
-        composer install --no-dev --prefer-dist --optimize-autoloader --no-progress
-
-    - name: Deploy via FTP
-      uses: SamKirkland/FTP-Deploy-Action@v4.3.4
-      with:
-        server: ${{ secrets.FTP_SERVER }}
-        username: ${{ secrets.FTP_USERNAME }}
-        password: ${{ secrets.FTP_PASSWORD }}
-        local-dir: ./
-        server-dir: /public_html/
-        exclude: |
-          **/.git*
-          **/.github*
-          **/node_modules/**
-          **/tests/**
-          **/.env.example
-          **/README.md
-          **/storage/framework/cache/**
-          **/storage/framework/sessions/**
-          **/storage/framework/views/**
+        host: ${{ secrets.SSH_HOST }}
+        port: ${{ secrets.SSH_PORT }}
+        username: ${{ secrets.SSH_USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          set -e
+          cd /home/u289261429/domains/certibot.1jeune1metier.com/public_html/1j1m-attestation
+          git fetch origin main
+          git reset --hard origin/main
+          composer install --no-dev --prefer-dist --optimize-autoloader --no-progress
+          php artisan config:clear
+          php artisan cache:clear
+          php artisan view:clear
+          php artisan route:clear
+          php artisan config:cache
