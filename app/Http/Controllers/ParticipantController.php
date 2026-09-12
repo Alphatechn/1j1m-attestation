@@ -68,7 +68,7 @@ class ParticipantController extends Controller
             'knowledge_use_plan'          => 'required|string|min:20',
             'coaches'                     => 'required|string|min:10',
             'homework_screenshots'        => 'required|array|min:1|max:6',
-            'homework_screenshots.*'      => 'required|image|mimes:jpg,jpeg,png,webp|max:4096',
+            'homework_screenshots.*'      => 'required|image|mimes:jpg,jpeg,png,webp|max:8192',
         ], [
             'civility.required'                    => 'La civilité est obligatoire.',
             'name.required'                        => 'Les noms et prénoms complets sont obligatoires.',
@@ -100,7 +100,7 @@ class ParticipantController extends Controller
             'homework_screenshots.max'             => 'Vous pouvez envoyer au maximum 6 captures d\'écran.',
             'homework_screenshots.*.image'         => 'Chaque capture doit être une image.',
             'homework_screenshots.*.mimes'         => 'Les captures doivent être au format JPG, PNG ou WEBP.',
-            'homework_screenshots.*.max'           => 'Chaque capture ne doit pas dépasser 4 Mo.',
+            'homework_screenshots.*.max'           => 'Chaque capture ne doit pas dépasser 8 Mo.',
         ]);
 
         // Valider la longueur du numéro local selon le pays

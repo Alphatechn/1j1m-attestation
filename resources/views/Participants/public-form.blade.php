@@ -203,8 +203,9 @@
                 </div>
                 <div class="col-12">
                     <label class="form-label">Capture d'écran d'un devoir rendu <span class="text-danger">*</span></label>
-                    <input type="file" name="homework_screenshots[]" class="form-control @error('homework_screenshots') is-invalid @enderror @error('homework_screenshots.*') is-invalid @enderror" accept=".jpg,.jpeg,.png,.webp" multiple required>
-                    <div class="form-text">Affiche publicitaire, art oratoire ou autre devoir. Plusieurs images possibles: JPG, PNG ou WEBP, 4 Mo max par image.</div>
+                    <input type="file" name="homework_screenshots[]" id="homework_screenshots_input" class="form-control @error('homework_screenshots') is-invalid @enderror @error('homework_screenshots.*') is-invalid @enderror" accept="image/*,.heic,.heif" multiple required>
+                    <div class="form-text">Affiche publicitaire, art oratoire ou autre devoir. Plusieurs images possibles (photos iPhone/Android acceptées) — elles sont automatiquement optimisées avant l'envoi.</div>
+                    <div id="selected_screenshots_status" class="form-text"></div>
                     <div id="selected_screenshots_preview" class="selected-screenshots-preview mt-3"></div>
                     @error('homework_screenshots')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     @error('homework_screenshots.*')<div class="invalid-feedback">{{ $message }}</div>@enderror
@@ -447,27 +448,124 @@
 @section('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    // ── Aperçu captures d'écran ──────────────────────────────────────────
-    const screenshotInput = document.querySelector('input[name="homework_screenshots[]"]');
+    // ── Compression + aperçu des captures d'écran ─────────────────────────
+    // Les photos prises avec un smartphone (iPhone en particulier) peuvent
+    // peser 10-25 Mo et être au format HEIC : on les redimensionne et on les
+    // réencode en JPEG dans le navigateur avant l'envoi, pour que l'upload
+    // reste toujours possible quel que soit le téléphone utilisé.
+    const screenshotInput = document.getElementById('homework_screenshots_input');
     const preview = document.getElementById('selected_screenshots_preview');
+    const status = document.getElementById('selected_screenshots_status');
+    const submitBtn = document.querySelector('.request-form button[type="submit"]');
+
+    const MAX_DIMENSION = 1600;
+    const TARGET_MAX_BYTES = 2 * 1024 * 1024; // 2 Mo cible après compression
+
+    function compressImage(file) {
+        return new Promise((resolve) => {
+            if (!file.type.startsWith('image/') && !/\.(heic|heif)$/i.test(file.name)) {
+                resolve(file);
+                return;
+            }
+            if (file.size <= TARGET_MAX_BYTES && /\.(jpe?g|png|webp)$/i.test(file.name)) {
+                resolve(file);
+                return;
+            }
+
+            const img = new Image();
+            const url = URL.createObjectURL(file);
+
+            img.onload = function () {
+                URL.revokeObjectURL(url);
+                let { width, height } = img;
+                if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+                    if (width > height) {
+                        height = Math.round(height * (MAX_DIMENSION / width));
+                        width = MAX_DIMENSION;
+                    } else {
+                        width = Math.round(width * (MAX_DIMENSION / height));
+                        height = MAX_DIMENSION;
+                    }
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+
+                let quality = 0.82;
+                const tryExport = () => {
+                    canvas.toBlob(function (blob) {
+                        if (!blob) { resolve(file); return; }
+                        if (blob.size > TARGET_MAX_BYTES && quality > 0.4) {
+                            quality -= 0.12;
+                            tryExport();
+                            return;
+                        }
+                        const newName = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+                        resolve(new File([blob], newName, { type: 'image/jpeg' }));
+                    }, 'image/jpeg', quality);
+                };
+                tryExport();
+            };
+
+            // Si le navigateur ne sait pas décoder le fichier (ex: HEIC non
+            // supporté), on laisse passer l'original : la validation serveur
+            // affichera un message clair si le format n'est pas accepté.
+            img.onerror = function () {
+                URL.revokeObjectURL(url);
+                resolve(file);
+            };
+
+            img.src = url;
+        });
+    }
+
+    function renderPreview(files) {
+        preview.innerHTML = '';
+        files.forEach((file, index) => {
+            if (!file.type.startsWith('image/')) return;
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const item = document.createElement('div');
+                item.className = 'selected-screenshot';
+                item.innerHTML = `
+                    <img src="${e.target.result}" alt="Capture ${index + 1}">
+                    <span>Capture ${index + 1} (${(file.size / 1024 / 1024).toFixed(1)} Mo)</span>
+                `;
+                preview.appendChild(item);
+            };
+            reader.readAsDataURL(file);
+        });
+    }
 
     if (screenshotInput && preview) {
-        screenshotInput.addEventListener('change', function () {
-            preview.innerHTML = '';
-            Array.from(screenshotInput.files || []).forEach((file, index) => {
-                if (!file.type.startsWith('image/')) return;
-                const reader = new FileReader();
-                reader.onload = function (e) {
-                    const item = document.createElement('div');
-                    item.className = 'selected-screenshot';
-                    item.innerHTML = `
-                        <img src="${e.target.result}" alt="Capture ${index + 1}">
-                        <span>Capture ${index + 1}</span>
-                    `;
-                    preview.appendChild(item);
-                };
-                reader.readAsDataURL(file);
-            });
+        screenshotInput.addEventListener('change', async function () {
+            const files = Array.from(screenshotInput.files || []);
+            if (!files.length) {
+                preview.innerHTML = '';
+                if (status) status.textContent = '';
+                return;
+            }
+
+            if (status) status.textContent = 'Optimisation des images en cours…';
+            screenshotInput.disabled = true;
+            if (submitBtn) submitBtn.disabled = true;
+
+            const compressed = [];
+            for (const file of files) {
+                compressed.push(await compressImage(file));
+            }
+
+            const dataTransfer = new DataTransfer();
+            compressed.forEach((file) => dataTransfer.items.add(file));
+            screenshotInput.files = dataTransfer.files;
+
+            screenshotInput.disabled = false;
+            if (submitBtn) submitBtn.disabled = false;
+            if (status) status.textContent = '';
+
+            renderPreview(compressed);
         });
     }
 
