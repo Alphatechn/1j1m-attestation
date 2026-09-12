@@ -212,9 +212,6 @@ class AttestationService
     // VERSION FRANCAISE
     public function generatePDFOutput(Attestation $attestation)
     {
-       if (!defined('TCPDF_FONTS_DIR')) {
-            define('TCPDF_FONTS_DIR', storage_path('all_font/'));
-        }
         $participant = $attestation->participant;
 
         /*
