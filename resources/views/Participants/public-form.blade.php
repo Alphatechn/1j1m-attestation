@@ -24,6 +24,12 @@
             </div>
         @endif
 
+        @if(session('error'))
+            <div class="alert alert-danger border-0 shadow-sm">
+                <i class="bi bi-exclamation-triangle me-2"></i>{{ session('error') }}
+            </div>
+        @endif
+
         @if(session('existing_submission'))
             @php
                 $sub = session('existing_submission');
