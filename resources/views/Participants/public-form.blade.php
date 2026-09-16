@@ -347,6 +347,45 @@
         border-color: #dc3545;
     }
 
+    /* Select2 remplace le <select> par ce widget : on lui redonne le même
+       look que l'ancien menu déroulant collé au champ numéro. */
+    .phone-input-group .select2-container {
+        flex: 0 0 auto;
+        max-width: 190px;
+        min-width: 140px;
+    }
+
+    .phone-input-group .select2-container .select2-selection--single {
+        height: 44px;
+        border: 2px solid var(--primary-gold);
+        border-right: 0;
+        border-radius: 6px 0 0 6px;
+        display: flex;
+        align-items: center;
+        padding: 0 8px;
+    }
+
+    .phone-input-group .select2-container .select2-selection__rendered {
+        line-height: 1.2;
+        padding-left: 4px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .phone-input-group .select2-container .select2-selection__arrow {
+        height: 42px;
+    }
+
+    .phone-input-group.is-invalid .select2-container .select2-selection--single {
+        border-color: #dc3545;
+    }
+
+    .select2-container--default .select2-results__option--highlighted[aria-selected] {
+        background-color: var(--secondary-gold);
+        color: var(--black);
+    }
+
     #whatsapp_hint { transition: color .2s; }
     #whatsapp_hint.hint-ok    { color: #198754; font-weight: 600; }
     #whatsapp_hint.hint-error { color: #dc3545; font-weight: 600; }
@@ -446,6 +485,11 @@
 
         .selected-screenshots-preview {
             grid-template-columns: 1fr;
+        }
+
+        .phone-input-group .select2-container {
+            max-width: 130px;
+            min-width: 110px;
         }
     }
 </style>
@@ -660,6 +704,53 @@ document.addEventListener('DOMContentLoaded', function () {
     const countrySelect = document.getElementById('whatsapp_country_code');
     const numberInput   = document.getElementById('whatsapp_number');
     const hint          = document.getElementById('whatsapp_hint');
+
+    // ── Recherche + drapeaux sur la liste des pays (Select2) ──────────────
+    // 199 pays dans un <select> classique est pénible à parcourir sur
+    // mobile : Select2 ajoute une recherche tapée et on affiche le drapeau
+    // de chaque pays (déduit directement du code ISO utilisé comme valeur).
+    if (window.jQuery && countrySelect) {
+        function isoToFlagEmoji(iso) {
+            if (!iso || iso.length !== 2) return '';
+            return String.fromCodePoint(...Array.from(iso.toUpperCase()).map(c => 127397 + c.charCodeAt(0)));
+        }
+
+        function stripAccents(str) {
+            return (str || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+        }
+
+        function formatCountryOption(state) {
+            if (!state.id) return state.text;
+            const flag = isoToFlagEmoji(state.id);
+            return $('<span>' + flag + ' ' + state.text + '</span>');
+        }
+
+        function countryMatcher(params, data) {
+            if ($.trim(params.term || '') === '') return data;
+            if (typeof data.text === 'undefined') return null;
+            const term = stripAccents(params.term).toLowerCase();
+            const text = stripAccents(data.text).toLowerCase();
+            return text.indexOf(term) > -1 ? data : null;
+        }
+
+        $(countrySelect).select2({
+            width: '100%',
+            placeholder: 'Rechercher un pays...',
+            language: 'fr',
+            templateResult: formatCountryOption,
+            templateSelection: formatCountryOption,
+            matcher: countryMatcher,
+        });
+
+        // jQuery déclenche 'change' via son propre système d'évènements, qui
+        // n'atteint pas les listeners posés avec addEventListener. On relaie
+        // donc depuis l'évènement propriétaire 'select2:select' (jamais
+        // 'change' lui-même, pour ne pas créer de boucle) vers un vrai
+        // évènement natif afin que le reste du script continue de marcher.
+        $(countrySelect).on('select2:select select2:clear', function () {
+            countrySelect.dispatchEvent(new Event('change'));
+        });
+    }
 
     if (!countrySelect || !numberInput || !hint) return;
 
