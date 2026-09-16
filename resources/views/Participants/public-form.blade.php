@@ -454,6 +454,47 @@
 @section('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    // ── Notifications SweetAlert (succès / erreurs / cas particuliers) ────
+    @if(session('success'))
+        Swal.fire({
+            icon: 'success',
+            title: 'Demande envoyée !',
+            text: @json(session('success')),
+            confirmButtonColor: '#FFA500',
+        });
+    @endif
+
+    @if(session('error'))
+        Swal.fire({
+            icon: 'warning',
+            title: 'Session expirée',
+            text: @json(session('error')),
+            confirmButtonColor: '#FFA500',
+        });
+    @endif
+
+    @if(session('existing_submission'))
+        Swal.fire({
+            icon: 'info',
+            title: 'Dossier déjà enregistré',
+            text: @json(session('existing_submission')['message'] ?? 'Vous êtes déjà enregistré(e).'),
+            confirmButtonColor: '#FFA500',
+        });
+    @endif
+
+    @if($errors->any())
+        Swal.fire({
+            icon: 'error',
+            title: 'Merci de corriger {{ $errors->count() > 1 ? 'les champs suivants' : 'le champ suivant' }}',
+            html: `<ul style="text-align:left; margin:0; padding-left: 1.2em;">
+                @foreach($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>`,
+            confirmButtonColor: '#FFA500',
+        });
+    @endif
+
     // ── Compression + aperçu des captures d'écran ─────────────────────────
     // Les photos prises avec un smartphone (iPhone en particulier) peuvent
     // peser 10-25 Mo et être au format HEIC : on les redimensionne et on les
