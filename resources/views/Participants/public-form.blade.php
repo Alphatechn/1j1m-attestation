@@ -463,61 +463,95 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function compressImage(file) {
         return new Promise((resolve) => {
-            if (!file.type.startsWith('image/') && !/\.(heic|heif)$/i.test(file.name)) {
-                resolve(file);
-                return;
-            }
-            if (file.size <= TARGET_MAX_BYTES && /\.(jpe?g|png|webp)$/i.test(file.name)) {
-                resolve(file);
-                return;
-            }
+            // Filet de sécurité global : si quoi que ce soit dans la
+            // compression plante ou reste bloqué (Safari iOS a un bug connu
+            // où canvas.toBlob() ne rappelle jamais son callback sur
+            // certaines photos haute résolution), on abandonne après 8s et
+            // on envoie le fichier original plutôt que de figer le
+            // formulaire indéfiniment.
+            let settled = false;
+            const finish = (result) => {
+                if (settled) return;
+                settled = true;
+                resolve(result);
+            };
+            const safetyTimeout = setTimeout(() => finish(file), 8000);
 
-            const img = new Image();
-            const url = URL.createObjectURL(file);
-
-            img.onload = function () {
-                URL.revokeObjectURL(url);
-                let { width, height } = img;
-                if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
-                    if (width > height) {
-                        height = Math.round(height * (MAX_DIMENSION / width));
-                        width = MAX_DIMENSION;
-                    } else {
-                        width = Math.round(width * (MAX_DIMENSION / height));
-                        height = MAX_DIMENSION;
-                    }
+            try {
+                if (!file.type.startsWith('image/') && !/\.(heic|heif)$/i.test(file.name)) {
+                    clearTimeout(safetyTimeout);
+                    finish(file);
+                    return;
+                }
+                if (file.size <= TARGET_MAX_BYTES && /\.(jpe?g|png|webp)$/i.test(file.name)) {
+                    clearTimeout(safetyTimeout);
+                    finish(file);
+                    return;
                 }
 
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                const img = new Image();
+                const url = URL.createObjectURL(file);
 
-                let quality = 0.82;
-                const tryExport = () => {
-                    canvas.toBlob(function (blob) {
-                        if (!blob) { resolve(file); return; }
-                        if (blob.size > TARGET_MAX_BYTES && quality > 0.4) {
-                            quality -= 0.12;
-                            tryExport();
-                            return;
+                img.onload = function () {
+                    URL.revokeObjectURL(url);
+                    try {
+                        let { width, height } = img;
+                        if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+                            if (width > height) {
+                                height = Math.round(height * (MAX_DIMENSION / width));
+                                width = MAX_DIMENSION;
+                            } else {
+                                width = Math.round(width * (MAX_DIMENSION / height));
+                                height = MAX_DIMENSION;
+                            }
                         }
-                        const newName = file.name.replace(/\.[^.]+$/, '') + '.jpg';
-                        resolve(new File([blob], newName, { type: 'image/jpeg' }));
-                    }, 'image/jpeg', quality);
+
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+                        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+
+                        let quality = 0.82;
+                        const tryExport = () => {
+                            try {
+                                canvas.toBlob(function (blob) {
+                                    if (!blob) { clearTimeout(safetyTimeout); finish(file); return; }
+                                    if (blob.size > TARGET_MAX_BYTES && quality > 0.4) {
+                                        quality -= 0.12;
+                                        tryExport();
+                                        return;
+                                    }
+                                    clearTimeout(safetyTimeout);
+                                    const newName = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+                                    finish(new File([blob], newName, { type: 'image/jpeg' }));
+                                }, 'image/jpeg', quality);
+                            } catch (e) {
+                                clearTimeout(safetyTimeout);
+                                finish(file);
+                            }
+                        };
+                        tryExport();
+                    } catch (e) {
+                        clearTimeout(safetyTimeout);
+                        finish(file);
+                    }
                 };
-                tryExport();
-            };
 
-            // Si le navigateur ne sait pas décoder le fichier (ex: HEIC non
-            // supporté), on laisse passer l'original : la validation serveur
-            // affichera un message clair si le format n'est pas accepté.
-            img.onerror = function () {
-                URL.revokeObjectURL(url);
-                resolve(file);
-            };
+                // Si le navigateur ne sait pas décoder le fichier (ex: HEIC
+                // non supporté), on laisse passer l'original : la
+                // validation serveur affichera un message clair si le
+                // format n'est pas accepté.
+                img.onerror = function () {
+                    URL.revokeObjectURL(url);
+                    clearTimeout(safetyTimeout);
+                    finish(file);
+                };
 
-            img.src = url;
+                img.src = url;
+            } catch (e) {
+                clearTimeout(safetyTimeout);
+                finish(file);
+            }
         });
     }
 
@@ -552,20 +586,26 @@ document.addEventListener('DOMContentLoaded', function () {
             screenshotInput.disabled = true;
             if (submitBtn) submitBtn.disabled = true;
 
-            const compressed = [];
-            for (const file of files) {
-                compressed.push(await compressImage(file));
+            try {
+                const compressed = [];
+                for (const file of files) {
+                    compressed.push(await compressImage(file));
+                }
+
+                const dataTransfer = new DataTransfer();
+                compressed.forEach((file) => dataTransfer.items.add(file));
+                screenshotInput.files = dataTransfer.files;
+
+                renderPreview(compressed);
+            } catch (e) {
+                // En cas d'échec imprévu, on garde les fichiers originaux
+                // sélectionnés : le formulaire reste envoyable, la
+                // validation serveur guidera l'utilisateur si besoin.
+            } finally {
+                screenshotInput.disabled = false;
+                if (submitBtn) submitBtn.disabled = false;
+                if (status) status.textContent = '';
             }
-
-            const dataTransfer = new DataTransfer();
-            compressed.forEach((file) => dataTransfer.items.add(file));
-            screenshotInput.files = dataTransfer.files;
-
-            screenshotInput.disabled = false;
-            if (submitBtn) submitBtn.disabled = false;
-            if (status) status.textContent = '';
-
-            renderPreview(compressed);
         });
     }
 
