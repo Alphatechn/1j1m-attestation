@@ -232,6 +232,7 @@
 @endsection
 
 @section('styles')
+<link rel="stylesheet" href="{{ asset('assets/flag-icons/css/flag-icons.min.css') }}">
 <style>
     .request-hero {
         align-items: center;
@@ -710,9 +711,14 @@ document.addEventListener('DOMContentLoaded', function () {
     // mobile : Select2 ajoute une recherche tapée et on affiche le drapeau
     // de chaque pays (déduit directement du code ISO utilisé comme valeur).
     if (window.jQuery && countrySelect) {
-        function isoToFlagEmoji(iso) {
+        // Drapeau en vraie image SVG (fichiers du paquet flag-icons,
+        // hébergés localement) plutôt qu'en emoji Unicode : les emojis
+        // drapeaux dépendent de la police système et ne s'affichent pas du
+        // tout sur Windows/Edge (ils s'affichent en revanche sur iPhone).
+        // Une image SVG rend à l'identique partout.
+        function flagIconHtml(iso) {
             if (!iso || iso.length !== 2) return '';
-            return String.fromCodePoint(...Array.from(iso.toUpperCase()).map(c => 127397 + c.charCodeAt(0)));
+            return '<span class="fi fi-' + iso.toLowerCase() + '" style="margin-right:6px;"></span>';
         }
 
         function stripAccents(str) {
@@ -721,8 +727,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         function formatCountryOption(state) {
             if (!state.id) return state.text;
-            const flag = isoToFlagEmoji(state.id);
-            return $('<span>' + flag + ' ' + state.text + '</span>');
+            return $('<span>' + flagIconHtml(state.id) + state.text + '</span>');
         }
 
         function countryMatcher(params, data) {
