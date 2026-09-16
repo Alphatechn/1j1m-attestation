@@ -129,8 +129,8 @@
                                 <option value="{{ $code }}"
                                     data-min="{{ $country['min'] }}"
                                     data-max="{{ $country['max'] }}"
-                                    @selected(old('whatsapp_country_code', '237') === $code)>
-                                    {{ $country['name'] }} (+{{ $code }})
+                                    @selected(old('whatsapp_country_code', 'CM') === $code)>
+                                    {{ $country['name'] }} (+{{ $country['dial'] }})
                                 </option>
                             @endforeach
                         </select>
@@ -711,7 +711,7 @@ document.addEventListener('DOMContentLoaded', function () {
     countrySelect.addEventListener('change', function () {
         const country = getSelectedCountry();
         if (country) {
-            numberInput.setAttribute('placeholder', '6' + '0'.repeat(country.min - 1));
+            numberInput.setAttribute('placeholder', '0'.repeat(country.min));
         }
         updateHint();
     });
