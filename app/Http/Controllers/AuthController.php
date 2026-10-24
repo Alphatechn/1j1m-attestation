@@ -2,17 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-    /**
-     * Afficher le formulaire de connexion
-     */
     public function showLoginForm()
     {
         if (Auth::check()) {
@@ -22,99 +19,77 @@ class AuthController extends Controller
         return view('Auth.login');
     }
 
-    /**
-     * Traiter la connexion
-     */
     public function login(Request $request)
     {
         $request->validate([
-            'login' => 'required|string',
-            'password' => 'required|string',
+            'login' => ['required', 'string'],
+            'password' => ['required', 'string'],
         ]);
 
-        // Vérifier le rate limiting
-        $key = Str::lower($request->input('login')) . '|' . $request->ip();
+        $key = Str::lower(trim($request->string('login')->toString())).'|'.$request->ip();
 
-        if (RateLimiter::tooManyAttempts($key, 5)) {
-            $seconds = RateLimiter::availableIn($key);
-
-            return response()->json([
-                'success' => false,
-                'message' => "Trop de tentatives. Réessayez dans {$seconds} secondes."
-            ], 429);
+        if (RateLimiter::tooManyAttempts($key, 10)) {
+            return $this->failure($request, 'Trop de tentatives. Réessayez dans '.RateLimiter::availableIn($key).' secondes.', 429);
         }
 
-        // Tentative de connexion
-        $credentials = [
-            'login' => $request->login,
-            'password' => $request->password,
-        ];
+        $user = User::where('login', $request->input('login'))->first();
 
-        // Vérifier si l'utilisateur existe et est actif
-        $user = \App\Models\User::where('login', $request->login)->first();
-
-        if (!$user) {
+        if (!$user || !$user->is_active || $user->is_delete) {
             RateLimiter::hit($key, 60);
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Identifiants incorrects.'
-            ], 422);
+            return $this->failure($request, $user && !$user->is_active
+                ? 'Votre compte est désactivé. Contactez l’administrateur.'
+                : 'Identifiants incorrects.', $user ? 403 : 422);
         }
 
-        if (!$user->is_active) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Votre compte est désactivé. Contactez l\'administrateur.'
-            ], 403);
+        if (!Auth::attempt($request->only('login', 'password'), $request->boolean('remember'))) {
+            RateLimiter::hit($key, 60);
+
+            return $this->failure($request, 'Identifiants incorrects.');
         }
 
-        if ($user->is_delete) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Ce compte n\'existe plus.'
-            ], 403);
+        $request->session()->regenerate();
+        RateLimiter::clear($key);
+        $redirect = $this->intendedUrl($request) ?? route('dashboard.manage');
+
+        if (!$request->expectsJson()) {
+            return redirect()->to($redirect)->with('success', 'Connexion réussie.');
         }
-
-        // Tentative d'authentification
-        if (Auth::attempt($credentials, $request->filled('remember'))) {
-            $request->session()->regenerate();
-            RateLimiter::clear($key);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Connexion réussie.',
-                'redirect' => route('home')
-            ]);
-        }
-
-        // Échec de connexion
-        RateLimiter::hit($key, 60);
 
         return response()->json([
-            'success' => false,
-            'message' => 'Identifiants incorrects.'
-        ], 422);
+            'success' => true,
+            'message' => 'Connexion réussie.',
+            'redirect' => $redirect,
+        ]);
     }
 
-    /**
-     * Déconnexion
-     */
     public function logout(Request $request)
     {
         Auth::logout();
-
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        if ($request->ajax()) {
-            return response()->json([
-                'success' => true,
-                'message' => 'Déconnexion réussie.',
-                'redirect' => route('login')
-            ]);
+        if ($request->expectsJson()) {
+            return response()->json(['success' => true, 'redirect' => route('login')]);
         }
 
         return redirect()->route('login')->with('success', 'Déconnexion réussie.');
+    }
+
+    private function failure(Request $request, string $message, int $status = 422)
+    {
+        if ($request->expectsJson()) {
+            return response()->json(['success' => false, 'message' => $message], $status);
+        }
+
+        return back()->withInput($request->only('login', 'remember'))->with('error', $message);
+    }
+
+    private function intendedUrl(Request $request): ?string
+    {
+        $intended = $request->session()->get('url.intended');
+        $host = $intended ? parse_url($intended, PHP_URL_HOST) : null;
+
+        return !$host || $host === $request->getHost() ? $intended : null;
     }
 }

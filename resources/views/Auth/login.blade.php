@@ -162,7 +162,7 @@
                     </div>
                 @endif
 
-                <form id="loginForm" method="POST" action="{{ route('login.post') }}">
+                <form id="loginForm" method="POST" action="{{ route('login.post') }}" novalidate>
                     @csrf
 
                     <div class="input-group mb-1 flex-nowrap">
@@ -182,6 +182,7 @@
                         </div>
                     </div>
                     <span id="error_login" class="error-message"></span>
+                    @error('login')<span class="error-message">{{ $message }}</span>@enderror
 
                     <div class="input-group mb-1 mt-3">
                         <div class="form-floating flex-grow-1">
@@ -198,6 +199,7 @@
                         </div>
                     </div>
                     <span id="error_password" class="error-message"></span>
+                    @error('password')<span class="error-message">{{ $message }}</span>@enderror
 
                     <!-- Remember Me (optionnel) -->
                     <div class="form-check mt-3 mb-3">
@@ -303,7 +305,10 @@
                         body: formData
                     });
 
-                    const result = await response.json();
+                    const contentType = response.headers.get('content-type') || '';
+                    const result = contentType.includes('application/json')
+                        ? await response.json()
+                        : { message: 'La session a expiré ou le serveur a renvoyé une réponse inattendue.' };
 
                     if (response.status === 422) {
                         // Erreurs de validation
@@ -332,7 +337,7 @@
                         }, 1000);
                     } else {
                         // Autre erreur
-                        showAlert(result.message || 'Une erreur est survenue.', 'danger');
+                        showAlert(result.message || 'Une erreur est survenue. Actualisez la page puis réessayez.', 'danger');
                     }
                 } catch (error) {
                     console.error('Erreur:', error);

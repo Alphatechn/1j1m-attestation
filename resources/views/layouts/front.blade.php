@@ -10,6 +10,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- Bootstrap CSS (doit venir en premier car c'est le framework de base) -->
     @include('layouts.inc.css')
+    <style>
+        :root { --app-brand: #2457d6; --app-ink: #172033; --app-surface: #f5f7fb; }
+        body { background: var(--app-surface); color: var(--app-ink); }
+        .app-header { border-bottom: 1px solid #e8ecf4; box-shadow: 0 2px 14px rgba(23, 32, 51, .04); }
+        .app-sidebar { background: linear-gradient(180deg, #172033, #222f4e) !important; }
+        .sidebar-brand { border-bottom-color: rgba(255,255,255,.1); }
+        .sidebar-menu .nav-link { border-radius: .6rem; margin: .18rem .65rem; }
+        .sidebar-menu .nav-link.active, .sidebar-menu .nav-link:hover { background: rgba(99, 148, 255, .2) !important; }
+        .app-content-header { padding: 1.5rem 0 .5rem; }
+        .card, .info-box { border: 1px solid #e8ecf4; border-radius: .85rem; box-shadow: 0 4px 20px rgba(23, 32, 51, .045); }
+        .card-header { background: transparent; border-bottom-color: #edf0f5; padding: 1rem 1.25rem; }
+        .btn-primary { background: var(--app-brand); border-color: var(--app-brand); }
+    </style>
     @yield('styles')
 </head>
 <!--end::Head-->
