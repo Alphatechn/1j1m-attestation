@@ -181,9 +181,11 @@
 @section('scripts')
 <script>
 let previewData = null;
+let statusRefreshTimer = null;
+let statusRefreshInFlight = false;
+let statusRefreshDelay = 30000;
 
-// Rafraîchir le statut toutes les 10 secondes
-setInterval(refreshStatus, 10000);
+// Rafraîchir le statut sans empiler les requêtes si le serveur répond lentement.
 refreshStatus();
 
 // ========================================
@@ -191,28 +193,77 @@ refreshStatus();
 // ========================================
 
 function refreshStatus() {
-    fetch('{{ route("attestations.bulk.status") }}')
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                updateStatusDisplay(data.data);
+    if (statusRefreshInFlight) {
+        return;
+    }
+
+    clearTimeout(statusRefreshTimer);
+    statusRefreshInFlight = true;
+
+    fetch('{{ route("attestations.bulk.status") }}', {
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store'
+    })
+        .then(async response => {
+            if (!response.ok) {
+                const retryAfterHeader = response.headers.get('Retry-After');
+                let retryAfter = Number(retryAfterHeader);
+                if (retryAfterHeader && !Number.isFinite(retryAfter)) {
+                    retryAfter = (Date.parse(retryAfterHeader) - Date.now()) / 1000;
+                }
+                const error = new Error(`HTTP ${response.status} lors de la récupération du statut`);
+                error.status = response.status;
+                error.retryAfter = Number.isFinite(retryAfter) && retryAfter > 0
+                    ? retryAfter * 1000
+                    : null;
+                throw error;
             }
+
+            return response.json();
         })
-        .catch(err => console.error('Erreur refresh status:', err));
+        .then(data => {
+            if (!data.success || !data.data) {
+                throw new Error(data.message || 'Réponse de statut invalide');
+            }
+            updateStatusDisplay(data.data);
+            statusRefreshDelay = 30000;
+        })
+        .catch(err => {
+            if (err.status === 429 && err.retryAfter) {
+                statusRefreshDelay = Math.min(err.retryAfter, 600000);
+            } else {
+                statusRefreshDelay = err.status === 429
+                    ? Math.min(Math.max(statusRefreshDelay * 2, 60000), 120000)
+                    : Math.min(statusRefreshDelay * 2, 120000);
+            }
+            console.error('Erreur refresh status:', err);
+        })
+        .finally(() => {
+            statusRefreshInFlight = false;
+            statusRefreshTimer = setTimeout(refreshStatus, statusRefreshDelay);
+        });
+}
+
+function getStatusElement(id) {
+    const element = document.getElementById(id);
+    if (!element) {
+        throw new Error(`Élément de statut introuvable: #${id}`);
+    }
+    return element;
 }
 
 function updateStatusDisplay(status) {
     // Quota
     const quota = status.quota;
     const percentage = Math.min(quota.percentage, 100);
-    const quotaBar = document.getElementById('quota-bar');
+    const quotaBar = getStatusElement('quota-bar');
     quotaBar.style.width = percentage + '%';
     quotaBar.className = 'progress-bar ' + (percentage > 80 ? 'bg-danger' : percentage > 50 ? 'bg-warning' : 'bg-success');
-    document.getElementById('quota-text').textContent =
+    getStatusElement('quota-text').textContent =
         `${quota.sent_this_hour} / ${quota.max_per_hour} envoyés (${quota.remaining} restants)`;
 
     // Timing
-    document.getElementById('timing-text').innerHTML = `
+    getStatusElement('timing-text').innerHTML = `
         Dernier envoi: ${status.timing.last_email_ago_human || 'Jamais'}<br>
         <span class="${status.timing.can_send_now ? 'text-success' : 'text-warning'}">
             ${status.timing.can_send_now ? '✅ Peut envoyer maintenant' : '⏳ Prochain: ' + status.timing.next_available_at}
@@ -220,20 +271,20 @@ function updateStatusDisplay(status) {
     `;
 
     // Queue
-    document.getElementById('queue-text').innerHTML = `
+    getStatusElement('queue-text').innerHTML = `
         En attente: ${status.queue.pending_jobs}<br>
         Échecs: ${status.queue.failed_jobs}<br>
         Attestations pending: ${status.queue.pending_attestations}
     `;
-    document.getElementById('pending-jobs-count').textContent = status.queue.pending_jobs;
+    getStatusElement('pending-jobs-count').textContent = status.queue.pending_jobs;
 
     // Hostinger bloqué ?
     if (status.hostinger.blocked) {
-        document.getElementById('hostinger-block').style.display = 'block';
-        document.getElementById('hostinger-block-text').textContent =
+        getStatusElement('hostinger-block').style.display = 'block';
+        getStatusElement('hostinger-block-text').textContent =
             `Déblocage prévu à ${status.hostinger.blocked_until} (dans ${status.hostinger.blocked_remaining})`;
     } else {
-        document.getElementById('hostinger-block').style.display = 'none';
+        getStatusElement('hostinger-block').style.display = 'none';
     }
 
     // Recent
@@ -243,7 +294,7 @@ function updateStatusDisplay(status) {
             html += `<tr><td>${item.participant}</td><td>${item.email}</td><td>${item.sent_at}</td></tr>`;
         });
         html += '</tbody></table>';
-        document.getElementById('recent-sends').innerHTML = html;
+        getStatusElement('recent-sends').innerHTML = html;
     }
 }
 
