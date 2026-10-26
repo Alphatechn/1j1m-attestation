@@ -252,6 +252,50 @@ function getStatusElement(id) {
     return element;
 }
 
+function getHostingerBlockElements() {
+    let block = document.getElementById('hostinger-block');
+    if (!block) {
+        const queueText = getStatusElement('queue-text');
+        const cardBody = queueText.closest('.card-body');
+        if (!cardBody) {
+            throw new Error('Conteneur du statut Hostinger introuvable');
+        }
+
+        block = document.createElement('div');
+        block.id = 'hostinger-block';
+        block.className = 'alert alert-danger mt-3';
+        block.style.display = 'none';
+
+        const title = document.createElement('strong');
+        title.textContent = '🚨 HOSTINGER BLOQUÉ';
+
+        const text = document.createElement('p');
+        text.id = 'hostinger-block-text';
+        text.className = 'mb-0';
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-warning btn-sm mt-2';
+        button.innerHTML = '<i class="fas fa-unlock"></i> Débloquer Maintenant';
+        button.addEventListener('click', unlockHostinger);
+
+        block.append(title, text, button);
+        cardBody.appendChild(block);
+        console.warn('Bloc Hostinger absent du HTML; élément recréé dans le statut.');
+    }
+
+    let text = block.querySelector('#hostinger-block-text');
+    if (!text) {
+        text = document.createElement('p');
+        text.id = 'hostinger-block-text';
+        text.className = 'mb-0';
+        block.prepend(text);
+        console.warn('Texte du bloc Hostinger absent du HTML; élément recréé.');
+    }
+
+    return { block, text };
+}
+
 function updateStatusDisplay(status) {
     // Quota
     const quota = status.quota;
@@ -279,12 +323,13 @@ function updateStatusDisplay(status) {
     getStatusElement('pending-jobs-count').textContent = status.queue.pending_jobs;
 
     // Hostinger bloqué ?
+    const hostingerBlock = getHostingerBlockElements();
     if (status.hostinger.blocked) {
-        getStatusElement('hostinger-block').style.display = 'block';
-        getStatusElement('hostinger-block-text').textContent =
+        hostingerBlock.block.style.display = 'block';
+        hostingerBlock.text.textContent =
             `Déblocage prévu à ${status.hostinger.blocked_until} (dans ${status.hostinger.blocked_remaining})`;
     } else {
-        getStatusElement('hostinger-block').style.display = 'none';
+        hostingerBlock.block.style.display = 'none';
     }
 
     // Recent
