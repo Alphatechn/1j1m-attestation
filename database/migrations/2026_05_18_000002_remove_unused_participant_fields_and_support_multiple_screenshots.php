@@ -10,8 +10,25 @@ return new class extends Migration
     public function up(): void
     {
         if (DB::connection()->getDriverName() === 'sqlite') {
-            DB::statement('DROP INDEX IF EXISTS participants_first_name_last_name_index');
-            DB::statement('DROP INDEX IF EXISTS participants_matricule_unique');
+            // SQLite rebuilds the table when dropping columns. Remove any
+            // legacy index that refers to a column which no longer exists
+            // before that rebuild starts.
+            $columns = Schema::getColumnListing('participants');
+            foreach (DB::select("PRAGMA index_list('participants')") as $index) {
+                $name = $index->name ?? null;
+                if (!$name || str_starts_with($name, 'sqlite_autoindex_')) {
+                    continue;
+                }
+
+                $indexedColumns = DB::select("PRAGMA index_info('" . str_replace("'", "''", $name) . "')");
+                $stale = collect($indexedColumns)->contains(
+                    fn ($column) => !in_array($column->name ?? null, $columns, true)
+                );
+
+                if ($stale) {
+                    DB::statement('DROP INDEX IF EXISTS "' . str_replace('"', '""', $name) . '"');
+                }
+            }
         }
 
         if (!Schema::hasColumn('participants', 'homework_screenshot_paths')) {

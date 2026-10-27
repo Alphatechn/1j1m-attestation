@@ -34,7 +34,12 @@ class ParticipantController extends Controller
     public function publicForm()
     {
         $countries = self::getCountryPhoneLengths();
-        return view('Participants.public-form', compact('countries'));
+        $periodes = Periode::active()
+            ->orderByDesc('date_debut')
+            ->orderByDesc('id')
+            ->get();
+
+        return view('Participants.public-form', compact('countries', 'periodes'));
     }
 
     public function publicSubmit(Request $request)
