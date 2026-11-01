@@ -434,7 +434,10 @@
                     },
                     success: function(response) {
                         if (response.success) {
-                            renderRecentAttestations(response.data.data);
+                            const attestations = Array.isArray(response.data)
+                                ? response.data
+                                : (response.data?.data || []);
+                            renderRecentAttestations(attestations);
                         }
                     },
                     error: function(xhr) {
