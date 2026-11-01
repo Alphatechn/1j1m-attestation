@@ -211,7 +211,8 @@ class AttestationController extends Controller
                 });
             }
 
-            $attestations = $query->orderBy('created_at', 'desc')->get();
+            $perPage = min(max((int) $request->input('per_page', 50), 1), 100);
+            $attestations = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
             return response()->json([
                 'success' => true,
