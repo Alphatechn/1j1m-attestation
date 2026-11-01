@@ -24,8 +24,7 @@ jobs:
           git reset --hard origin/main
           composer install --no-dev --prefer-dist --optimize-autoloader --no-progress
           ln -sfn "$(pwd)/storage/app/public" public/storage
-          php artisan config:clear
-          php artisan cache:clear
-          php artisan view:clear
-          php artisan route:clear
+          php artisan optimize:clear
           php artisan config:cache
+          php artisan schedule:list
+          php artisan queue:failed

@@ -566,17 +566,18 @@ $(document).ready(function() {
 function initializeDataTable() {
     dataTable = $('#participantsTable').DataTable({
         processing: true,
-        serverSide: false,
+        serverSide: true,
         responsive: true,
         ajax: {
             url: '/participants',
             type: 'GET',
+            data: function (d) {
+                d.serverSide = true;
+                return d;
+            },
             dataSrc: function (json) {
                 console.log('Réponse API:', json); // Debug
-                if (json.success && json.data) {
-                    return json.data.data || json.data;
-                }
-                return [];
+                return json.success && Array.isArray(json.data) ? json.data : [];
             },
             error: function(xhr, error, thrown) {
                 console.error('Erreur AJAX:', xhr);

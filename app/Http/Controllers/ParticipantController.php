@@ -443,7 +443,8 @@ class ParticipantController extends Controller
     public function index(Request $request)
     {
         if ($request->ajax()) {
-            $query = Participant::with(['periode', 'attestations', 'validatedBy']);
+            $query = Participant::with(['periode', 'validatedBy'])
+                ->withCount('attestations');
 
             // Filtres
             if ($request->filled('periode_id')) {
@@ -466,8 +467,10 @@ class ParticipantController extends Controller
                 $query->where('validation_status', $request->validation_status);
             }
 
-            if ($request->filled('search')) {
-                $search = $request->search;
+            $recordsTotal = (clone $query)->count();
+
+            $search = $request->input('search.value', $request->input('search'));
+            if (filled($search)) {
                 $query->where(function($q) use ($search) {
                     $q->where('name', 'LIKE', "%{$search}%")
                       ->orWhere('email', 'LIKE', "%{$search}%")
@@ -476,16 +479,41 @@ class ParticipantController extends Controller
                 });
             }
 
-            // Tri
+            $allowedSorts = [
+                'name', 'email', 'city', 'training_group',
+                'validation_status', 'is_active', 'created_at',
+            ];
+
             $sortBy = $request->get('sort_by', 'created_at');
             $sortOrder = $request->get('sort_order', 'desc');
+
+            if ($request->filled('order.0.column')) {
+                $column = $request->input('columns.' . $request->input('order.0.column') . '.data');
+                $sortBy = in_array($column, $allowedSorts, true) ? $column : 'created_at';
+                $sortOrder = $request->input('order.0.dir', 'desc');
+            }
+
+            $sortBy = in_array($sortBy, $allowedSorts, true) ? $sortBy : 'created_at';
+            $sortOrder = strtolower($sortOrder) === 'asc' ? 'asc' : 'desc';
+
             $query->orderBy($sortBy, $sortOrder);
 
-            $participants = $query->get();
+            if ($request->boolean('serverSide')) {
+                $length = min(max((int) $request->input('length', 10), 1), 100);
+                $participants = $query->paginate($length);
+
+                return response()->json([
+                    'success' => true,
+                    'draw' => (int) $request->input('draw', 0),
+                    'recordsTotal' => $recordsTotal,
+                    'recordsFiltered' => $participants->total(),
+                    'data' => $participants->items(),
+                ]);
+            }
 
             return response()->json([
                 'success' => true,
-                'data' => $participants
+                'data' => $query->limit(100)->get(),
             ]);
         }
 
