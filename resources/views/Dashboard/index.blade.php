@@ -449,7 +449,11 @@
             }
 
             // Afficher les attestations récentes
-            function renderRecentAttestations(attestations) {
+            function renderRecentAttestations(attestations = []) {
+                if (!Array.isArray(attestations)) {
+                    attestations = [];
+                }
+
                 let html = '';
 
                 if (attestations.length === 0) {
