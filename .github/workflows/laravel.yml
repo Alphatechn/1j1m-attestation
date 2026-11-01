@@ -22,9 +22,10 @@ jobs:
           cd /home/u289261429/domains/certibot.1jeune1metier.com/public_html/1j1m-attestation
           git fetch origin main
           git reset --hard origin/main
-          composer install --no-dev --prefer-dist --optimize-autoloader --no-progress
+          composer install --no-dev --prefer-dist --optimize-autoloader --no-progress --no-scripts
           ln -sfn "$(pwd)/storage/app/public" public/storage
           php artisan optimize:clear
+          php artisan package:discover --ansi
           php artisan config:cache
           php artisan schedule:list
           php artisan queue:failed
