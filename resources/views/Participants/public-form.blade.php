@@ -553,6 +553,17 @@ document.addEventListener('DOMContentLoaded', function () {
     const MAX_DIMENSION = 1600;
     const TARGET_MAX_BYTES = 2 * 1024 * 1024; // 2 Mo cible après compression
 
+    function copyUploadFile(file) {
+        try {
+            return new File([file], file.name, {
+                type: file.type || 'application/octet-stream',
+                lastModified: Date.now(),
+            });
+        } catch (e) {
+            return file;
+        }
+    }
+
     function compressImage(file) {
         return new Promise((resolve) => {
             // Filet de sécurité global : si quoi que ce soit dans la
@@ -567,17 +578,17 @@ document.addEventListener('DOMContentLoaded', function () {
                 settled = true;
                 resolve(result);
             };
-            const safetyTimeout = setTimeout(() => finish(file), 8000);
+            const safetyTimeout = setTimeout(() => finish(copyUploadFile(file)), 8000);
 
             try {
                 if (!file.type.startsWith('image/') && !/\.(heic|heif)$/i.test(file.name)) {
                     clearTimeout(safetyTimeout);
-                    finish(file);
+                    finish(copyUploadFile(file));
                     return;
                 }
                 if (file.size <= TARGET_MAX_BYTES && /\.(jpe?g|png|webp)$/i.test(file.name)) {
                     clearTimeout(safetyTimeout);
-                    finish(file);
+                    finish(copyUploadFile(file));
                     return;
                 }
 
@@ -607,7 +618,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         const tryExport = () => {
                             try {
                                 canvas.toBlob(function (blob) {
-                                    if (!blob) { clearTimeout(safetyTimeout); finish(file); return; }
+                                    if (!blob) { clearTimeout(safetyTimeout); finish(copyUploadFile(file)); return; }
                                     if (blob.size > TARGET_MAX_BYTES && quality > 0.4) {
                                         quality -= 0.12;
                                         tryExport();
@@ -619,13 +630,13 @@ document.addEventListener('DOMContentLoaded', function () {
                                 }, 'image/jpeg', quality);
                             } catch (e) {
                                 clearTimeout(safetyTimeout);
-                                finish(file);
+                                finish(copyUploadFile(file));
                             }
                         };
                         tryExport();
                     } catch (e) {
                         clearTimeout(safetyTimeout);
-                        finish(file);
+                        finish(copyUploadFile(file));
                     }
                 };
 
@@ -636,13 +647,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 img.onerror = function () {
                     URL.revokeObjectURL(url);
                     clearTimeout(safetyTimeout);
-                    finish(file);
+                    finish(copyUploadFile(file));
                 };
 
                 img.src = url;
             } catch (e) {
                 clearTimeout(safetyTimeout);
-                finish(file);
+                finish(copyUploadFile(file));
             }
         });
     }
